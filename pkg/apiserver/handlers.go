@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nalajala4naresh/chvmm-api/subresources"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -47,22 +48,22 @@ type Handler struct {
 	mux *http.ServeMux
 }
 
-const vmPath = "/apis/" + vmaccess.GroupName + "/" + vmaccess.Version + "/namespaces/{namespace}/virtualmachines/{name}/"
+const vmPath = "/apis/" + subresources.GroupName + "/" + subresources.Version + "/namespaces/{namespace}/virtualmachines/{name}/"
 
 // NewHandler returns a Handler for paths under /apis/<group>.
 func NewHandler(c client.Client, daemon DaemonConfig) *Handler {
 	h := &Handler{Client: c, Daemon: daemon, mux: http.NewServeMux()}
 
-	h.mux.HandleFunc("GET /apis/"+vmaccess.GroupName, h.writeJSON(apiGroup()))
-	h.mux.HandleFunc("GET /apis/"+vmaccess.GroupName+"/"+vmaccess.Version, h.writeJSON(apiResourceList()))
+	h.mux.HandleFunc("GET /apis/"+subresources.GroupName, h.writeJSON(apiGroup()))
+	h.mux.HandleFunc("GET /apis/"+subresources.GroupName+"/"+subresources.Version, h.writeJSON(apiResourceList()))
 
-	h.mux.HandleFunc("GET "+vmPath+vmaccess.SubresourceConsole, h.console)
-	h.mux.HandleFunc("GET "+vmPath+vmaccess.SubresourcePortForward+"/{port}", h.portForward)
+	h.mux.HandleFunc("GET "+vmPath+subresources.Console, h.console)
+	h.mux.HandleFunc("GET "+vmPath+subresources.PortForward+"/{port}", h.portForward)
 
-	h.mux.HandleFunc("POST "+vmPath+vmaccess.SubresourcePause, h.action(vmactions.Pause))
-	h.mux.HandleFunc("POST "+vmPath+vmaccess.SubresourceUnpause, h.action(vmactions.Unpause))
-	h.mux.HandleFunc("POST "+vmPath+vmaccess.SubresourceRestart, h.action(vmactions.Restart))
-	h.mux.HandleFunc("POST "+vmPath+vmaccess.SubresourceMigrate, h.migrate)
+	h.mux.HandleFunc("POST "+vmPath+subresources.Pause, h.action(vmactions.Pause))
+	h.mux.HandleFunc("POST "+vmPath+subresources.Unpause, h.action(vmactions.Unpause))
+	h.mux.HandleFunc("POST "+vmPath+subresources.Restart, h.action(vmactions.Restart))
+	h.mux.HandleFunc("POST "+vmPath+subresources.Migrate, h.migrate)
 	return h
 }
 
@@ -81,7 +82,7 @@ func (h *Handler) console(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) portForward(w http.ResponseWriter, r *http.Request) {
 	port, err := strconv.Atoi(r.PathValue("port"))
 	if err != nil || port < 1 || port > 65535 {
-		writeStatus(w, apierrors.NewBadRequest(fmt.Sprintf("invalid port %q", r.PathValue("port"))))
+		vmaccess.WriteStatus(w, apierrors.NewBadRequest(fmt.Sprintf("invalid port %q", r.PathValue("port"))))
 		return
 	}
 	vm, ok := h.getRunningVM(w, r)
@@ -94,7 +95,7 @@ func (h *Handler) portForward(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) action(do func(context.Context, client.Client, types.NamespacedName) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := do(r.Context(), h.Client, vmKey(r)); err != nil {
-			writeStatus(w, err)
+			vmaccess.WriteStatus(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
@@ -104,9 +105,11 @@ func (h *Handler) action(do func(context.Context, client.Client, types.Namespace
 func (h *Handler) migrate(w http.ResponseWriter, r *http.Request) {
 	migration, err := vmactions.Migrate(r.Context(), h.Client, vmKey(r))
 	if err != nil {
-		writeStatus(w, err)
+		vmaccess.WriteStatus(w, err)
 		return
 	}
+	// The typed client clears TypeMeta; set it so the response is a self-describing object.
+	migration.TypeMeta = metav1.TypeMeta{APIVersion: v1beta1.GroupVersion.String(), Kind: "VirtualMachineMigration"}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(migration)
@@ -117,7 +120,7 @@ func (h *Handler) migrate(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) proxyToDaemon(w http.ResponseWriter, r *http.Request, vm *v1beta1.VirtualMachine, path string) {
 	podIP, err := h.daemonIP(r.Context(), vm.Status.NodeName)
 	if err != nil {
-		writeStatus(w, err)
+		vmaccess.WriteStatus(w, err)
 		return
 	}
 	user := ""
@@ -142,7 +145,7 @@ func (h *Handler) proxyToDaemon(w http.ResponseWriter, r *http.Request, vm *v1be
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			klog.ErrorS(err, "proxy to daemon", "vm", klog.KObj(vm), "node", vm.Status.NodeName)
-			writeStatus(w, apierrors.NewServiceUnavailable(fmt.Sprintf("connect to VM on node %s: %v", vm.Status.NodeName, err)))
+			vmaccess.WriteStatus(w, apierrors.NewServiceUnavailable(fmt.Sprintf("connect to VM on node %s: %v", vm.Status.NodeName, err)))
 		},
 	}
 	klog.InfoS("streaming to VM", "vm", klog.KObj(vm), "path", path, "user", user)
@@ -169,18 +172,18 @@ func (h *Handler) daemonIP(ctx context.Context, nodeName string) (string, error)
 func (h *Handler) getRunningVM(w http.ResponseWriter, r *http.Request) (*v1beta1.VirtualMachine, bool) {
 	var vm v1beta1.VirtualMachine
 	if err := h.Client.Get(r.Context(), vmKey(r), &vm); err != nil {
-		writeStatus(w, err)
+		vmaccess.WriteStatus(w, err)
 		return nil, false
 	}
 	switch vm.Status.Phase {
 	case v1beta1.VirtualMachineRunning, v1beta1.VirtualMachinePaused, v1beta1.VirtualMachineResumed:
 	default:
-		writeStatus(w, apierrors.NewConflict(vmResource, vm.Name,
+		vmaccess.WriteStatus(w, apierrors.NewConflict(vmResource, vm.Name,
 			fmt.Errorf("VM is not running, current phase is %q", vm.Status.Phase)))
 		return nil, false
 	}
 	if vm.Status.NodeName == "" {
-		writeStatus(w, apierrors.NewConflict(vmResource, vm.Name, errors.New("VM is not scheduled to a node")))
+		vmaccess.WriteStatus(w, apierrors.NewConflict(vmResource, vm.Name, errors.New("VM is not scheduled to a node")))
 		return nil, false
 	}
 	return &vm, true
@@ -199,19 +202,4 @@ func (h *Handler) writeJSON(v any) http.HandlerFunc {
 
 func vmKey(r *http.Request) types.NamespacedName {
 	return types.NamespacedName{Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
-}
-
-// writeStatus writes err as a metav1.Status, the error format kubectl and client-go understand.
-func writeStatus(w http.ResponseWriter, err error) {
-	var status metav1.Status
-	var apiStatus apierrors.APIStatus
-	if errors.As(err, &apiStatus) {
-		status = apiStatus.Status()
-	} else {
-		status = apierrors.NewInternalError(err).Status()
-	}
-	status.TypeMeta = metav1.TypeMeta{Kind: "Status", APIVersion: "v1"}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(int(status.Code))
-	_ = json.NewEncoder(w).Encode(status)
 }

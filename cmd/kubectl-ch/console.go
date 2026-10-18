@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 
-	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
-
-	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 )
 
 // escapeByte (Ctrl+]) ends a console session, as in telnet and virtctl.
@@ -23,15 +21,15 @@ func consoleCommand(opts *globalOptions) *cobra.Command {
 		Short: "Connect to the serial console of a VM (Ctrl+] to exit)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, ns, err := opts.restConfig()
+			vms, ns, err := opts.vms()
 			if err != nil {
 				return err
 			}
-			ws, err := dialStream(cmd.Context(), cfg, subresourcePath(ns, args[0], vmaccess.SubresourceConsole))
+			conn, err := vms.Console(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			defer ws.Close()
+			defer conn.Close()
 
 			fmt.Fprintf(os.Stderr, "Connected to %s/%s. Escape sequence is ^]\n", ns, args[0])
 			if term.IsTerminal(int(os.Stdin.Fd())) {
@@ -41,26 +39,17 @@ func consoleCommand(opts *globalOptions) *cobra.Command {
 				}
 				defer func() { _ = term.Restore(int(os.Stdin.Fd()), state) }()
 			}
-			return runConsole(ws, os.Stdin, os.Stdout)
+			return runConsole(conn, os.Stdin, os.Stdout)
 		},
 	}
 }
 
 // runConsole copies stdin to the console until the escape byte or EOF, and the console to stdout.
-func runConsole(ws *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
+func runConsole(conn net.Conn, stdin io.Reader, stdout io.Writer) error {
 	errCh := make(chan error, 2)
 	go func() {
-		for {
-			_, data, err := ws.ReadMessage()
-			if err != nil {
-				errCh <- err
-				return
-			}
-			if _, err := stdout.Write(data); err != nil {
-				errCh <- err
-				return
-			}
-		}
+		_, err := io.Copy(stdout, conn)
+		errCh <- err
 	}()
 	go func() {
 		buf := make([]byte, 1024)
@@ -73,7 +62,7 @@ func runConsole(ws *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 					data = data[:i]
 				}
 				if len(data) > 0 {
-					if werr := ws.WriteMessage(websocket.BinaryMessage, data); werr != nil {
+					if _, werr := conn.Write(data); werr != nil {
 						errCh <- werr
 						return
 					}
@@ -91,8 +80,7 @@ func runConsole(ws *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 	}()
 
 	err := <-errCh
-	_ = ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err == nil || errors.Is(err, io.EOF) || websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 		fmt.Fprint(os.Stderr, "\r\nDisconnected.\r\n")
 		return nil
 	}

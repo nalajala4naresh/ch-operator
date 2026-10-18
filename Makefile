@@ -45,7 +45,13 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd 
+	# The controller's ClusterRole is generated from the +kubebuilder:rbac markers in internal/.
+	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="./internal/..." output:rbac:dir=config/ch-vmm-controller/rbac
+	$(CONTROLLER_GEN) webhook paths="./..."
+	# The API types live in the chvmm-api module; generate CRDs from the version pinned in go.mod.
+	$(CONTROLLER_GEN) crd paths=github.com/nalajala4naresh/chvmm-api/v1beta1 output:crd:dir=config/crd/bases
+	# ch-operator does not reconcile VMReplicaSets, so it does not install their CRD.
+	rm -f config/crd/bases/cloudhypervisor.quill.today_vmreplicasets.yaml
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,10 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nalajala4naresh/chvmm-api/vmclient"
 	"github.com/spf13/cobra"
-	"k8s.io/client-go/rest"
-
-	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 )
 
 type portMapping struct {
@@ -48,7 +47,7 @@ func portForwardCommand(opts *globalOptions) *cobra.Command {
   kubectl ch port-forward --stdio myvm 22   # for use as an ssh ProxyCommand`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, ns, err := opts.restConfig()
+			vms, ns, err := opts.vms()
 			if err != nil {
 				return err
 			}
@@ -66,7 +65,7 @@ func portForwardCommand(opts *globalOptions) *cobra.Command {
 				if len(mappings) != 1 {
 					return fmt.Errorf("--stdio takes exactly one port")
 				}
-				return forward(cmd.Context(), cfg, ns, vm, mappings[0].remote, stdioConn{})
+				return forward(cmd.Context(), vms, vm, mappings[0].remote, stdioConn{})
 			}
 
 			errCh := make(chan error, len(mappings))
@@ -85,7 +84,7 @@ func portForwardCommand(opts *globalOptions) *cobra.Command {
 							return
 						}
 						go func() {
-							if err := forward(cmd.Context(), cfg, ns, vm, remote, conn); err != nil {
+							if err := forward(cmd.Context(), vms, vm, remote, conn); err != nil {
 								fmt.Fprintf(os.Stderr, "forward to port %d: %v\n", remote, err)
 							}
 						}()
@@ -105,13 +104,28 @@ func portForwardCommand(opts *globalOptions) *cobra.Command {
 	return cmd
 }
 
-func forward(ctx context.Context, cfg *rest.Config, ns, vm string, port int, conn io.ReadWriteCloser) error {
-	ws, err := dialStream(ctx, cfg, subresourcePath(ns, vm, vmaccess.SubresourcePortForward+"/"+strconv.Itoa(port)))
+func forward(ctx context.Context, vms vmclient.VirtualMachineInterface, vm string, port int, local io.ReadWriteCloser) error {
+	defer local.Close()
+	remote, err := vms.PortForward(ctx, vm, port)
 	if err != nil {
-		conn.Close()
 		return err
 	}
-	return vmaccess.Splice(ws, conn)
+	defer remote.Close()
+
+	// Return when either side is done; the deferred closes unblock the other copy.
+	errCh := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(remote, local)
+		errCh <- err
+	}()
+	go func() {
+		_, err := io.Copy(local, remote)
+		errCh <- err
+	}()
+	if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
+		return err
+	}
+	return nil
 }
 
 type stdioConn struct{}
@@ -130,7 +144,7 @@ func sshCommand(opts *globalOptions) *cobra.Command {
   kubectl ch ssh myvm -l ubuntu -- -i ~/.ssh/id_ed25519`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, ns, err := opts.restConfig()
+			_, ns, err := opts.vms()
 			if err != nil {
 				return err
 			}

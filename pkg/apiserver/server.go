@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/nalajala4naresh/chvmm-api/subresources"
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -85,7 +86,7 @@ func (o *Options) NewServer(handler http.Handler) (*genericapiserver.GenericAPIS
 	// request timeout and in-flight limits.
 	basic := genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString("proxy"))
 	config.LongRunningFunc = func(r *http.Request, ri *request.RequestInfo) bool {
-		if ri != nil && ri.APIGroup == vmaccess.GroupName && vmaccess.StreamingSubresources[ri.Subresource] {
+		if ri != nil && ri.APIGroup == subresources.GroupName && vmaccess.StreamingSubresources[ri.Subresource] {
 			return true
 		}
 		return wsstream.IsWebSocketRequest(r) || basic(r, ri)
@@ -98,11 +99,11 @@ func (o *Options) NewServer(handler http.Handler) (*genericapiserver.GenericAPIS
 		return nil, err
 	}
 
-	server.Handler.NonGoRestfulMux.Handle("/apis/"+vmaccess.GroupName, handler)
-	server.Handler.NonGoRestfulMux.HandlePrefix("/apis/"+vmaccess.GroupName+"/", handler)
+	server.Handler.NonGoRestfulMux.Handle("/apis/"+subresources.GroupName, handler)
+	server.Handler.NonGoRestfulMux.HandlePrefix("/apis/"+subresources.GroupName+"/", handler)
 	server.DiscoveryGroupManager.AddGroup(apiGroup())
 	if server.AggregatedDiscoveryGroupManager != nil {
-		server.AggregatedDiscoveryGroupManager.AddGroupVersion(vmaccess.GroupName, aggregatedDiscovery())
+		server.AggregatedDiscoveryGroupManager.AddGroupVersion(subresources.GroupName, aggregatedDiscovery())
 	}
 	return server, nil
 }
@@ -120,7 +121,7 @@ func (r streamingVerbResolver) NewRequestInfo(req *http.Request) (*request.Reque
 	if err != nil || info == nil {
 		return info, err
 	}
-	if info.IsResourceRequest && info.APIGroup == vmaccess.GroupName && vmaccess.StreamingSubresources[info.Subresource] {
+	if info.IsResourceRequest && info.APIGroup == subresources.GroupName && vmaccess.StreamingSubresources[info.Subresource] {
 		info.Verb = "create"
 	}
 	return info, nil

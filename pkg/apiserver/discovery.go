@@ -4,7 +4,7 @@ import (
 	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
+	"github.com/nalajala4naresh/chvmm-api/subresources"
 )
 
 type subresource struct {
@@ -12,26 +12,26 @@ type subresource struct {
 	verbs []string
 }
 
-var subresources = []subresource{
+var vmSubresources = []subresource{
 	// Streams are opened with a WebSocket GET but authorized as "create", like pods/exec.
-	{vmaccess.SubresourceConsole, []string{"create", "get"}},
-	{vmaccess.SubresourcePortForward, []string{"create", "get"}},
+	{subresources.Console, []string{"create", "get"}},
+	{subresources.PortForward, []string{"create", "get"}},
 	// Actions are POSTs (verb "create"), like pods/eviction.
-	{vmaccess.SubresourcePause, []string{"create"}},
-	{vmaccess.SubresourceUnpause, []string{"create"}},
-	{vmaccess.SubresourceRestart, []string{"create"}},
-	{vmaccess.SubresourceMigrate, []string{"create"}},
+	{subresources.Pause, []string{"create"}},
+	{subresources.Unpause, []string{"create"}},
+	{subresources.Restart, []string{"create"}},
+	{subresources.Migrate, []string{"create"}},
 }
 
 var groupVersion = metav1.GroupVersionForDiscovery{
-	GroupVersion: vmaccess.GroupName + "/" + vmaccess.Version,
-	Version:      vmaccess.Version,
+	GroupVersion: subresources.GroupName + "/" + subresources.Version,
+	Version:      subresources.Version,
 }
 
 func apiGroup() metav1.APIGroup {
 	return metav1.APIGroup{
 		TypeMeta:         metav1.TypeMeta{Kind: "APIGroup", APIVersion: "v1"},
-		Name:             vmaccess.GroupName,
+		Name:             subresources.GroupName,
 		Versions:         []metav1.GroupVersionForDiscovery{groupVersion},
 		PreferredVersion: groupVersion,
 	}
@@ -42,7 +42,7 @@ func apiResourceList() metav1.APIResourceList {
 		TypeMeta:     metav1.TypeMeta{Kind: "APIResourceList", APIVersion: "v1"},
 		GroupVersion: groupVersion.GroupVersion,
 	}
-	for _, sr := range subresources {
+	for _, sr := range vmSubresources {
 		list.APIResources = append(list.APIResources, metav1.APIResource{
 			Name:       "virtualmachines/" + sr.name,
 			Namespaced: true,
@@ -58,17 +58,17 @@ func apiResourceList() metav1.APIResourceList {
 // subresources are listed here.
 func aggregatedDiscovery() apidiscoveryv2.APIVersionDiscovery {
 	vd := apidiscoveryv2.APIVersionDiscovery{
-		Version:   vmaccess.Version,
+		Version:   subresources.Version,
 		Freshness: apidiscoveryv2.DiscoveryFreshnessCurrent,
 	}
 	resource := apidiscoveryv2.APIResourceDiscovery{
 		Resource: "virtualmachines",
 		Scope:    apidiscoveryv2.ScopeNamespace,
 		ResponseKind: &metav1.GroupVersionKind{
-			Group: "cloudhypervisor.quill.today", Version: vmaccess.Version, Kind: "VirtualMachine",
+			Group: "cloudhypervisor.quill.today", Version: subresources.Version, Kind: "VirtualMachine",
 		},
 	}
-	for _, sr := range subresources {
+	for _, sr := range vmSubresources {
 		resource.Subresources = append(resource.Subresources, apidiscoveryv2.APISubresourceDiscovery{
 			Subresource: sr.name,
 			Verbs:       sr.verbs,

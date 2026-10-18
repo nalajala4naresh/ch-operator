@@ -9,25 +9,28 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/nalajala4naresh/chvmm-api/subresources"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
+	"github.com/nalajala4naresh/chvmm-api/vmclient"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -40,8 +43,8 @@ const (
 	testServerName = "ch-vmm-daemon.ch-vmm-system.svc"
 )
 
-// TestConsoleEndToEnd streams a console session through the ch-vmm-gateway handler and a real
-// daemon access server (mTLS) to a fake cloud-hypervisor serial socket.
+// TestConsoleEndToEnd streams a console session from the vmclient SDK through the ch-vmm-gateway
+// handler and a real daemon access server (mTLS) to a fake cloud-hypervisor serial socket.
 func TestConsoleEndToEnd(t *testing.T) {
 	pki := newTestPKI(t)
 	serialSock := fakeSerialConsole(t)
@@ -51,15 +54,18 @@ func TestConsoleEndToEnd(t *testing.T) {
 	api := httptest.NewServer(newTestHandler(t, c, pki.dir("ch-vmm-gateway"), daemonAddr.Port))
 	defer api.Close()
 
-	ws := dialWS(t, api.URL+"/apis/"+vmaccess.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/console")
-	defer ws.Close()
-
-	if err := ws.WriteMessage(websocket.BinaryMessage, []byte("hello")); err != nil {
+	conn, err := sdk(t, api.URL).Console(context.Background(), "vm1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
-	_, got, err := ws.ReadMessage()
-	if err != nil {
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	got := make([]byte, len("echo:hello"))
+	if _, err := io.ReadFull(conn, got); err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != "echo:hello" {
@@ -77,12 +83,36 @@ func TestDaemonRejectsOtherClients(t *testing.T) {
 	api := httptest.NewServer(newTestHandler(t, c, pki.dir("intruder"), daemonAddr.Port))
 	defer api.Close()
 
-	_, resp, err := websocket.DefaultDialer.Dial(wsURL(api.URL+"/apis/"+vmaccess.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/console"), nil)
-	if err == nil {
-		t.Fatal("expected the connection to be rejected")
+	if _, err := sdk(t, api.URL).Console(context.Background(), "vm1"); !apierrors.IsServiceUnavailable(err) {
+		t.Fatalf("got %v, want ServiceUnavailable", err)
 	}
-	if resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %v", resp)
+}
+
+// TestDaemonErrorsAreTyped checks that errors from the daemon reach SDK callers as API errors.
+func TestDaemonErrorsAreTyped(t *testing.T) {
+	pki := newTestPKI(t)
+	daemonAddr := startDaemon(t, pki, "ch-vmm-gateway", func(types.UID) string { return "/nonexistent" })
+
+	c := newFakeClient(t, runningVM(), daemonPod(daemonAddr.IP.String()))
+	api := httptest.NewServer(newTestHandler(t, c, pki.dir("ch-vmm-gateway"), daemonAddr.Port))
+	defer api.Close()
+	vms := sdk(t, api.URL)
+
+	// No serial socket, as for VMs started with a TTY console.
+	if _, err := vms.Console(context.Background(), "vm1"); !apierrors.IsConflict(err) {
+		t.Fatalf("console: got %v, want Conflict", err)
+	}
+
+	// Nothing listens on the guest port.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedPort := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	_, err = vms.PortForward(context.Background(), "vm1", closedPort)
+	if !apierrors.IsServiceUnavailable(err) || !strings.Contains(err.Error(), "connect to VM port") {
+		t.Fatalf("portforward: got %v, want ServiceUnavailable from the daemon", err)
 	}
 }
 
@@ -116,14 +146,17 @@ func TestPortForwardEndToEnd(t *testing.T) {
 	api := httptest.NewServer(newTestHandler(t, c, pki.dir("ch-vmm-gateway"), daemonAddr.Port))
 	defer api.Close()
 
-	ws := dialWS(t, api.URL+"/apis/"+vmaccess.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/portforward/"+strconv.Itoa(guestPort))
-	defer ws.Close()
-	if err := ws.WriteMessage(websocket.BinaryMessage, []byte("ping")); err != nil {
+	conn, err := sdk(t, api.URL).PortForward(context.Background(), "vm1", guestPort)
+	if err != nil {
 		t.Fatal(err)
 	}
-	_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
-	_, got, err := ws.ReadMessage()
-	if err != nil {
+	defer conn.Close()
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	got := make([]byte, 4)
+	if _, err := io.ReadFull(conn, got); err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != "PING" {
@@ -154,7 +187,7 @@ func TestActions(t *testing.T) {
 			h := NewHandler(c, DaemonConfig{})
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/apis/"+vmaccess.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/"+tt.path, nil)
+			req := httptest.NewRequest(http.MethodPost, "/apis/"+subresources.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/"+tt.path, nil)
 			h.ServeHTTP(rec, req)
 			if rec.Code != tt.wantCode {
 				t.Fatalf("code = %d, want %d: %s", rec.Code, tt.wantCode, rec.Body)
@@ -176,18 +209,21 @@ func TestActions(t *testing.T) {
 
 func TestMigrateCreatesMigration(t *testing.T) {
 	c := newFakeClient(t, runningVM())
-	h := NewHandler(c, DaemonConfig{})
+	api := httptest.NewServer(NewHandler(c, DaemonConfig{}))
+	defer api.Close()
 
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/apis/"+vmaccess.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/migrate", nil))
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("code = %d: %s", rec.Code, rec.Body)
+	got, err := sdk(t, api.URL).Migrate(context.Background(), "vm1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.VMName != "vm1" || got.Kind != "VirtualMachineMigration" || got.APIVersion != v1beta1.GroupVersion.String() {
+		t.Fatalf("unexpected response: %+v", got)
 	}
 	var migrations v1beta1.VirtualMachineMigrationList
 	if err := c.List(context.Background(), &migrations, client.InNamespace("default")); err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations.Items) != 1 || migrations.Items[0].Spec.VMName != "vm1" {
+	if len(migrations.Items) != 1 || migrations.Items[0].Name != got.Name {
 		t.Fatalf("unexpected migrations: %+v", migrations.Items)
 	}
 }
@@ -195,7 +231,7 @@ func TestMigrateCreatesMigration(t *testing.T) {
 func TestDiscovery(t *testing.T) {
 	h := NewHandler(newFakeClient(t), DaemonConfig{})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/apis/"+vmaccess.GroupName+"/v1beta1", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/apis/"+subresources.GroupName+"/v1beta1", nil))
 	var list metav1.APIResourceList
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
@@ -214,7 +250,7 @@ func TestStreamingRequiresRunningVM(t *testing.T) {
 	vm.Status.Phase = v1beta1.VirtualMachineScheduling
 	h := NewHandler(newFakeClient(t, vm), DaemonConfig{})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/apis/"+vmaccess.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/console", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/apis/"+subresources.GroupName+"/v1beta1/namespaces/default/virtualmachines/vm1/console", nil))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("code = %d, want 409", rec.Code)
 	}
@@ -327,27 +363,15 @@ func fakeSerialConsole(t *testing.T) string {
 	return path
 }
 
-func wsURL(httpURL string) string {
-	return "ws" + strings.TrimPrefix(httpURL, "http")
-}
-
-func dialWS(t *testing.T, httpURL string) *websocket.Conn {
+// sdk returns a vmclient for VMs in "default" talking to the handler at apiURL. The handler
+// stands in for kube-apiserver, so no credentials are needed.
+func sdk(t *testing.T, apiURL string) vmclient.VirtualMachineInterface {
 	t.Helper()
-	dialer := websocket.Dialer{Subprotocols: []string{vmaccess.PlainStreamProtocol}}
-	ws, resp, err := dialer.Dial(wsURL(httpURL), nil)
+	c, err := vmclient.NewForConfig(&rest.Config{Host: apiURL})
 	if err != nil {
-		body := ""
-		if resp != nil {
-			b := make([]byte, 512)
-			n, _ := resp.Body.Read(b)
-			body = string(b[:n])
-		}
-		t.Fatalf("dial %s: %v %s", httpURL, err, body)
+		t.Fatal(err)
 	}
-	if ws.Subprotocol() != vmaccess.PlainStreamProtocol {
-		t.Fatalf("subprotocol = %q", ws.Subprotocol())
-	}
-	return ws
+	return c.VirtualMachines("default")
 }
 
 // testPKI issues a CA and leaf certificates into cert-manager style directories.

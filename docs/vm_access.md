@@ -24,6 +24,24 @@ kubectl ch pause|unpause|restart myvm
 kubectl ch migrate myvm                     # creates a VirtualMachineMigration
 ```
 
+### Go SDK
+
+`kubectl-ch` is built on `github.com/nalajala4naresh/chvmm-api/vmclient`, which other programs can use
+directly. Streams are returned as `net.Conn`, and errors are `*apierrors.StatusError` values, so
+`apierrors.IsForbidden`, `IsConflict` and friends work for streams as well as actions:
+
+```go
+c, err := vmclient.NewForConfig(restConfig)
+vms := c.VirtualMachines("default")
+
+err = vms.Pause(ctx, "myvm")                       // also Unpause, Restart
+migration, err := vms.Migrate(ctx, "myvm")         // *v1beta1.VirtualMachineMigration
+console, err := vms.Console(ctx, "myvm")           // net.Conn to the serial console
+conn, err := vms.PortForward(ctx, "myvm", 22)      // net.Conn to the VM's port 22, e.g. for x/crypto/ssh
+```
+
+The wire contract (group, subprotocol, subresource names) is in `github.com/nalajala4naresh/chvmm-api/subresources`.
+
 ## API
 
 | Subresource | Request | RBAC verb |

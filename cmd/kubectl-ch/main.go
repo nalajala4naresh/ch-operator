@@ -6,20 +6,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/gorilla/websocket"
+	"github.com/nalajala4naresh/chvmm-api/subresources"
+	"github.com/nalajala4naresh/chvmm-api/vmclient"
 	"github.com/spf13/cobra"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	wstransport "k8s.io/client-go/transport/websocket"
-
-	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 )
 
 type globalOptions struct {
@@ -44,10 +38,10 @@ func main() {
 		consoleCommand(opts),
 		portForwardCommand(opts),
 		sshCommand(opts),
-		actionCommand(opts, vmaccess.SubresourcePause, "Pause a running VM"),
-		actionCommand(opts, vmaccess.SubresourceUnpause, "Resume a paused VM"),
-		actionCommand(opts, vmaccess.SubresourceRestart, "Reboot a running VM"),
-		actionCommand(opts, vmaccess.SubresourceMigrate, "Live-migrate a running VM to another node"),
+		actionCommand(opts, subresources.Pause, "Pause a running VM", vmclient.VirtualMachineInterface.Pause),
+		actionCommand(opts, subresources.Unpause, "Resume a paused VM", vmclient.VirtualMachineInterface.Unpause),
+		actionCommand(opts, subresources.Restart, "Reboot a running VM", vmclient.VirtualMachineInterface.Restart),
+		migrateCommand(opts),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -64,7 +58,8 @@ func (o *globalOptions) clientConfig() clientcmd.ClientConfig {
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{CurrentContext: o.context})
 }
 
-func (o *globalOptions) restConfig() (*rest.Config, string, error) {
+// vms returns a client for VMs in the selected namespace, and that namespace.
+func (o *globalOptions) vms() (vmclient.VirtualMachineInterface, string, error) {
 	cc := o.clientConfig()
 	cfg, err := cc.ClientConfig()
 	if err != nil {
@@ -76,7 +71,11 @@ func (o *globalOptions) restConfig() (*rest.Config, string, error) {
 			return nil, "", err
 		}
 	}
-	return cfg, ns, nil
+	c, err := vmclient.NewForConfig(cfg)
+	if err != nil {
+		return nil, "", err
+	}
+	return c.VirtualMachines(ns), ns, nil
 }
 
 // passthroughArgs are the global flags to pass to a nested kubectl-ch invocation.
@@ -91,52 +90,41 @@ func (o *globalOptions) passthroughArgs(namespace string) []string {
 	return args
 }
 
-func subresourcePath(namespace, name, subresource string) string {
-	return fmt.Sprintf("/apis/%s/%s/namespaces/%s/virtualmachines/%s/%s",
-		vmaccess.GroupName, vmaccess.Version, url.PathEscape(namespace), url.PathEscape(name), subresource)
-}
-
-// dialStream opens a WebSocket to a streaming subresource through kube-apiserver.
-func dialStream(ctx context.Context, cfg *rest.Config, path string) (*websocket.Conn, error) {
-	rt, holder, err := wstransport.RoundTripperFor(cfg)
-	if err != nil {
-		return nil, err
-	}
-	u, err := url.Parse(cfg.Host)
-	if err != nil {
-		return nil, err
-	}
-	u.Path = path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := wstransport.Negotiate(rt, holder, req, vmaccess.PlainStreamProtocol)
-	if err != nil {
-		return nil, fmt.Errorf("connect to %s: %w", path, err)
-	}
-	return conn, nil
-}
-
-func actionCommand(opts *globalOptions, action, short string) *cobra.Command {
+func actionCommand(opts *globalOptions, action, short string,
+	do func(vmclient.VirtualMachineInterface, context.Context, string) error) *cobra.Command {
 	return &cobra.Command{
 		Use:   action + " VM",
 		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, ns, err := opts.restConfig()
+			vms, ns, err := opts.vms()
 			if err != nil {
 				return err
 			}
-			cs, err := kubernetes.NewForConfig(cfg)
-			if err != nil {
-				return err
-			}
-			result := cs.Discovery().RESTClient().Post().AbsPath(subresourcePath(ns, args[0], action)).Do(cmd.Context())
-			if err := result.Error(); err != nil {
+			if err := do(vms, cmd.Context(), args[0]); err != nil {
 				return err
 			}
 			fmt.Printf("VM %s/%s: %s requested\n", ns, args[0], action)
+			return nil
+		},
+	}
+}
+
+func migrateCommand(opts *globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   subresources.Migrate + " VM",
+		Short: "Live-migrate a running VM to another node",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vms, ns, err := opts.vms()
+			if err != nil {
+				return err
+			}
+			migration, err := vms.Migrate(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("VM %s/%s: migration %s created\n", ns, args[0], migration.Name)
 			return nil
 		},
 	}

@@ -1,23 +1,17 @@
-// Package vmaccess holds what ch-vmm-gateway, ch-vmm-daemon and kubectl-ch share for streaming
-// access to VMs: API names, the daemon's streaming endpoint layout and the WebSocket splice.
+// Package vmaccess holds what ch-vmm-gateway and ch-vmm-daemon share for streaming access to
+// VMs: the daemon's streaming endpoint layout, its mTLS setup and the WebSocket splice. The public
+// API contract (group, subprotocol, subresource names) is in chvmm-api/subresources.
 package vmaccess
 
 import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/nalajala4naresh/chvmm-api/subresources"
 	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
-	// GroupName is the API group served by ch-vmm-gateway through the kube-apiserver aggregation layer.
-	GroupName = "subresources.cloudhypervisor.quill.today"
-	Version   = "v1beta1"
-
-	// PlainStreamProtocol is the WebSocket subprotocol for a raw byte stream: every binary
-	// message carries bytes of the console or TCP stream, in order.
-	PlainStreamProtocol = "plain.cloudhypervisor.quill.today"
-
 	// DaemonAccessPort is where ch-vmm-daemon serves streaming endpoints to ch-vmm-gateway (mTLS).
 	DaemonAccessPort = 8444
 	// UserHeader carries the end user's name from ch-vmm-gateway to the daemon, for logging only.
@@ -29,20 +23,10 @@ const (
 	VMPodRunDir = "/var/run/ch-vmm"
 )
 
-// Subresources served by ch-vmm-gateway.
-const (
-	SubresourceConsole     = "console"
-	SubresourcePortForward = "portforward"
-	SubresourcePause       = "pause"
-	SubresourceUnpause     = "unpause"
-	SubresourceRestart     = "restart"
-	SubresourceMigrate     = "migrate"
-)
-
 // StreamingSubresources are long-running WebSocket subresources.
 var StreamingSubresources = map[string]bool{
-	SubresourceConsole:     true,
-	SubresourcePortForward: true,
+	subresources.Console:     true,
+	subresources.PortForward: true,
 }
 
 // DaemonConsolePath is the daemon path for a VM's serial console.
