@@ -553,6 +553,11 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 								r.migrationControlBlocks[vm.UID] = migrationControlBlock
 							}
 							if time.Now().After(migrationControlBlock.RunningDeadline) {
+								// Abort the in-flight transfer (cloud-hypervisor v54+) so it cannot
+								// complete later and tear down the source after we declared failure.
+								if err := getCloudHypervisorClient(vm).VmCancelMigration(ctx); err != nil {
+									log.Error(err, "cancel migration")
+								}
 								r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMMigrate",
 									"send-migration did not complete within %s; VM is still running on source node %s",
 									migrationRunningTimeout, r.NodeName)
@@ -939,8 +944,9 @@ func (r *VMReconciler) addHotplugVolumesToVM(ctx context.Context, vm *v1beta1.Vi
 		case v1beta1.VolumeMountedToPod:
 			if _, ok := vmDisksMap[volumeStatus.Name]; !ok {
 				diskConfig := &cloudhypervisor.DiskConfig{
-					Id:     volumeStatus.Name,
-					Direct: true,
+					Id:        volumeStatus.Name,
+					Direct:    true,
+					ImageType: "Raw",
 				}
 
 				isBlock, err := volumeutil.IsBlock(ctx, r.Client, vm.Namespace, *volume)
@@ -1152,9 +1158,9 @@ type migrationControlBlock struct {
 	// transfer to complete. As of cloud-hypervisor v53 vm.send-migration
 	// returns immediately, so a transfer that fails mid-flight no longer
 	// surfaces an error through SendMigrationErrCh; without this deadline the
-	// source would requeue indefinitely. The source VM is still running on
-	// timeout (cloud-hypervisor preserves it on migration failure), so this is
-	// a recoverable failure.
+	// source would requeue indefinitely. On timeout the transfer is cancelled
+	// via vm.cancel-migration (v54+) and the source VM keeps running, so this
+	// is a recoverable failure.
 	RunningDeadline time.Time
 }
 
