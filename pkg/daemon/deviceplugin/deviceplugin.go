@@ -50,6 +50,8 @@ func (dpm *devicePluginManager) Start(ctx context.Context) error {
 }
 
 type devicePlugin struct {
+	devicepluginv1beta1.UnimplementedDevicePluginServer
+
 	deviceName string
 	devicePath string
 	devices    []*devicepluginv1beta1.Device
@@ -172,7 +174,7 @@ func (dp *devicePlugin) Allocate(ctx context.Context, req *devicepluginv1beta1.A
 	var containerResps []*devicepluginv1beta1.ContainerAllocateResponse
 	for _, containerReq := range req.ContainerRequests {
 		var devices []*devicepluginv1beta1.DeviceSpec
-		for i := 0; i < len(containerReq.DevicesIDs); i++ {
+		for i := 0; i < len(containerReq.DevicesIds); i++ {
 			devices = append(devices, &devicepluginv1beta1.DeviceSpec{
 				HostPath:      dp.devicePath,
 				ContainerPath: dp.devicePath,

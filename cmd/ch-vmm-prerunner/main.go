@@ -175,8 +175,9 @@ func buildChVMConfig(ctx context.Context, vm *v1beta1.VirtualMachine) (*cloudhyp
 		for _, volume := range vm.Spec.Volumes {
 			if volume.Name == disk.Name {
 				diskConfig := cloudhypervisor.DiskConfig{
-					Id:     disk.Name,
-					Direct: true,
+					Id:        disk.Name,
+					Direct:    true,
+					ImageType: "Raw",
 				}
 				switch {
 				case volume.ContainerDisk != nil:
@@ -358,8 +359,10 @@ func buildChVMConfig(ctx context.Context, vm *v1beta1.VirtualMachine) (*cloudhyp
 						vdpaDeviceConfig := cloudhypervisor.VdpaConfig{
 							Id:        iface.Name,
 							NumQueues: iface.VDPA.NumQueues,
-							Iommu:     iface.VDPA.IOMMU,
 							Path:      networkStatus.DeviceInfo.Vdpa.Path,
+						}
+						if iface.VDPA.IOMMU {
+							vdpaDeviceConfig.Iommu = "Virtio"
 						}
 						vmConfig.Vdpa = append(vmConfig.Vdpa, &vdpaDeviceConfig)
 					}

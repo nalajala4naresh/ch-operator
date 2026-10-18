@@ -2,16 +2,13 @@ package webhooks
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 
 	types "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -21,7 +18,7 @@ var vmpoollog = logf.Log.WithName("vmpool-resource")
 
 // SetupVMPoolWebhookWithManager registers the webhook for VMPool in the manager.
 func SetupVMPoolWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&types.VMPool{}).
+	return ctrl.NewWebhookManagedBy(mgr, &types.VMPool{}).
 		WithValidator(&VMPoolCustomValidator{}).
 		WithDefaulter(&VMPoolCustomDefaulter{}).
 		Complete()
@@ -40,17 +37,12 @@ type VMPoolCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &VMPoolCustomDefaulter{}
+var _ admission.Defaulter[*types.VMPool] = &VMPoolCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind VMPool.
-func (d *VMPoolCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	vmpool, ok := obj.(*types.VMPool)
+// Default implements admission.Defaulter so a webhook will be registered for the Kind VMPool.
+func (d *VMPoolCustomDefaulter) Default(ctx context.Context, vmpool *types.VMPool) error {
 	if vmpool.Namespace == "" {
 		vmpool.Namespace = "default"
-	}
-
-	if !ok {
-		return fmt.Errorf("expected an VMPool object but got %T", obj)
 	}
 	vmpoollog.Info("Defaulting for VMPool", "name", vmpool.GetName())
 
@@ -73,15 +65,10 @@ type VMPoolCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &VMPoolCustomValidator{}
+var _ admission.Validator[*types.VMPool] = &VMPoolCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type VMPool.
-func (v *VMPoolCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	vmpool, ok := obj.(*types.VMPool)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMPool object but got %T", obj)
-	}
-
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type VMPool.
+func (v *VMPoolCustomValidator) ValidateCreate(ctx context.Context, vmpool *types.VMPool) (admission.Warnings, error) {
 	// For CREATE, just validate that selector is not empty
 	if len(vmpool.Spec.Selector.MatchLabels) == 0 {
 		return nil, apierrors.NewInvalid(
@@ -97,17 +84,8 @@ func (v *VMPoolCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type VMPool.
-func (v *VMPoolCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-
-	newPool, ok := newObj.(*types.VMPool)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMPool object for the newObj but got %T", newObj)
-	}
-	oldPool, ok := oldObj.(*types.VMPool)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMPool object for the newObj but got %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type VMPool.
+func (v *VMPoolCustomValidator) ValidateUpdate(ctx context.Context, oldPool, newPool *types.VMPool) (admission.Warnings, error) {
 	vmsetlog.Info("Validation for VMPool upon update", "name", newPool.GetName())
 
 	if !reflect.DeepEqual(newPool.Spec.Selector, oldPool.Spec.Selector) {
@@ -124,12 +102,8 @@ func (v *VMPoolCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type VMPool.
-func (v *VMPoolCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	vmpool, ok := obj.(*types.VMPool)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMPool object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type VMPool.
+func (v *VMPoolCustomValidator) ValidateDelete(ctx context.Context, vmpool *types.VMPool) (admission.Warnings, error) {
 	vmpoollog.Info("Validation for VMPool upon deletion", "name", vmpool.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

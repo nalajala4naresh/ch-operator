@@ -20,7 +20,7 @@ var clientTemplate string
 var allSchemas map[string]*openapi.Schema
 
 func main() {
-	resp, err := http.Get("https://raw.githubusercontent.com/cloud-hypervisor/cloud-hypervisor/v53.0/vmm/src/api/openapi/cloud-hypervisor.yaml")
+	resp, err := http.Get("https://raw.githubusercontent.com/cloud-hypervisor/cloud-hypervisor/v54.0/vmm/src/api/openapi/cloud-hypervisor.yaml")
 	if err != nil {
 		panic(err)
 	}

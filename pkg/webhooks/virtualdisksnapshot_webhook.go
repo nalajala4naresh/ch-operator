@@ -8,13 +8,10 @@ package webhooks
 
 import (
 	"context"
-	"fmt"
 
 	types "github.com/nalajala4naresh/chvmm-api/v1beta1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -24,7 +21,7 @@ var virtualdisksnapshotlog = logf.Log.WithName("virtualdisksnapshot-resource")
 
 // SetupVirtualDiskSnapshotWebhookWithManager registers the webhook for VirtualDiskSnapshot in the manager.
 func SetupVirtualDiskSnapshotWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&types.VirtualDiskSnapshot{}).
+	return ctrl.NewWebhookManagedBy(mgr, &types.VirtualDiskSnapshot{}).
 		WithValidator(&VirtualDiskSnapshotCustomValidator{}).
 		WithDefaulter(&VirtualDiskSnapshotCustomDefaulter{}).
 		Complete()
@@ -43,15 +40,10 @@ type VirtualDiskSnapshotCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &VirtualDiskSnapshotCustomDefaulter{}
+var _ admission.Defaulter[*types.VirtualDiskSnapshot] = &VirtualDiskSnapshotCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind VirtualDiskSnapshot.
-func (d *VirtualDiskSnapshotCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	virtualdisksnapshot, ok := obj.(*types.VirtualDiskSnapshot)
-
-	if !ok {
-		return fmt.Errorf("expected an VirtualDiskSnapshot object but got %T", obj)
-	}
+// Default implements admission.Defaulter so a webhook will be registered for the Kind VirtualDiskSnapshot.
+func (d *VirtualDiskSnapshotCustomDefaulter) Default(_ context.Context, virtualdisksnapshot *types.VirtualDiskSnapshot) error {
 	virtualdisksnapshotlog.Info("Defaulting for VirtualDiskSnapshot", "name", virtualdisksnapshot.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -73,14 +65,10 @@ type VirtualDiskSnapshotCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &VirtualDiskSnapshotCustomValidator{}
+var _ admission.Validator[*types.VirtualDiskSnapshot] = &VirtualDiskSnapshotCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type VirtualDiskSnapshot.
-func (v *VirtualDiskSnapshotCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	virtualdisksnapshot, ok := obj.(*types.VirtualDiskSnapshot)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualDiskSnapshot object but got %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type VirtualDiskSnapshot.
+func (v *VirtualDiskSnapshotCustomValidator) ValidateCreate(_ context.Context, virtualdisksnapshot *types.VirtualDiskSnapshot) (admission.Warnings, error) {
 	virtualdisksnapshotlog.Info("Validation for VirtualDiskSnapshot upon creation", "name", virtualdisksnapshot.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -88,12 +76,8 @@ func (v *VirtualDiskSnapshotCustomValidator) ValidateCreate(_ context.Context, o
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type VirtualDiskSnapshot.
-func (v *VirtualDiskSnapshotCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	virtualdisksnapshot, ok := newObj.(*types.VirtualDiskSnapshot)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualDiskSnapshot object for the newObj but got %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type VirtualDiskSnapshot.
+func (v *VirtualDiskSnapshotCustomValidator) ValidateUpdate(_ context.Context, oldObj, virtualdisksnapshot *types.VirtualDiskSnapshot) (admission.Warnings, error) {
 	virtualdisksnapshotlog.Info("Validation for VirtualDiskSnapshot upon update", "name", virtualdisksnapshot.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -101,12 +85,8 @@ func (v *VirtualDiskSnapshotCustomValidator) ValidateUpdate(_ context.Context, o
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type VirtualDiskSnapshot.
-func (v *VirtualDiskSnapshotCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	virtualdisksnapshot, ok := obj.(*types.VirtualDiskSnapshot)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualDiskSnapshot object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type VirtualDiskSnapshot.
+func (v *VirtualDiskSnapshotCustomValidator) ValidateDelete(ctx context.Context, virtualdisksnapshot *types.VirtualDiskSnapshot) (admission.Warnings, error) {
 	virtualdisksnapshotlog.Info("Validation for VirtualDiskSnapshot upon deletion", "name", virtualdisksnapshot.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

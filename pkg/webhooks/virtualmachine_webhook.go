@@ -12,11 +12,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -27,8 +25,7 @@ var virtualmachinelog = logf.Log.WithName("virtualmachine-resource")
 
 // SetupWebhookWithManager will setup the manager to manage the webhooks
 func SetupVirtualMachineWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&types.VirtualMachine{}).
+	return ctrl.NewWebhookManagedBy(mgr, &types.VirtualMachine{}).
 		WithDefaulter(&VirtualMachineCustomDefaulter{}).
 		WithValidator(&VirtualMachineCustomValidator{}).
 		Complete()
@@ -44,13 +41,11 @@ type VirtualMachineCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &VirtualMachineCustomDefaulter{}
+var _ admission.Defaulter[*types.VirtualMachine] = &VirtualMachineCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the type
-func (r *VirtualMachineCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-
+// Default implements admission.Defaulter so a webhook will be registered for the type
+func (r *VirtualMachineCustomDefaulter) Default(ctx context.Context, vm *types.VirtualMachine) error {
 	// TODO(user): fill in your defaulting logic.
-	vm := obj.(*types.VirtualMachine)
 	if vm.Namespace == "" {
 		vm.Namespace = "default"
 	}
@@ -230,12 +225,10 @@ type VirtualMachineCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &VirtualMachineCustomValidator{}
+var _ admission.Validator[*types.VirtualMachine] = &VirtualMachineCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *VirtualMachineCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-
-	vm := obj.(*types.VirtualMachine)
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type
+func (r *VirtualMachineCustomValidator) ValidateCreate(ctx context.Context, vm *types.VirtualMachine) (admission.Warnings, error) {
 	errList := ValidateVM(ctx, vm, nil)
 	if len(errList) != 0 {
 		errStr := []string{}
@@ -250,11 +243,8 @@ func (r *VirtualMachineCustomValidator) ValidateCreate(ctx context.Context, obj 
 
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *VirtualMachineCustomValidator) ValidateUpdate(ctx context.Context, old runtime.Object, new runtime.Object) (admission.Warnings, error) {
-
-	oldvm := old.(*types.VirtualMachine)
-	newvm := new.(*types.VirtualMachine)
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type
+func (r *VirtualMachineCustomValidator) ValidateUpdate(ctx context.Context, oldvm, newvm *types.VirtualMachine) (admission.Warnings, error) {
 	errList := ValidateVM(ctx, newvm, oldvm)
 	if len(errList) != 0 {
 		errStr := []string{}
@@ -267,9 +257,8 @@ func (r *VirtualMachineCustomValidator) ValidateUpdate(ctx context.Context, old 
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *VirtualMachineCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	vm := obj.(*types.VirtualMachine)
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type
+func (r *VirtualMachineCustomValidator) ValidateDelete(ctx context.Context, vm *types.VirtualMachine) (admission.Warnings, error) {
 	virtualmachinelog.Info("validate delete", "name", vm.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

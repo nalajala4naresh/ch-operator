@@ -104,7 +104,7 @@ func (r *VMRollbackReconciler) reconcile(ctx context.Context, vr v1beta1.VMRollb
 	//fetch the backing snapshot for the rollback & if not found fail the process
 	if err := r.Get(ctx, snapshotName, &vs); err != nil {
 		vr.Status.Phase = v1beta1.RollbackFailed
-		r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "MissingSnapshot", fmt.Sprintf("Snapshot missing %q", vr.Name))
+		r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "MissingSnapshot", "Snapshot missing %q", vr.Name)
 		if err := r.Status().Update(ctx, &vr); err != nil {
 
 			return fmt.Errorf("unable to update VMRollback status : %s", err)
@@ -119,7 +119,7 @@ func (r *VMRollbackReconciler) reconcile(ctx context.Context, vr v1beta1.VMRollb
 	vrsName := types.NamespacedName{Namespace: vr.Namespace, Name: vr.Spec.Snapshot}
 	if err := r.Get(ctx, vrsName, &vrs); err != nil {
 		vr.Status.Phase = v1beta1.RollbackFailed
-		r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "MissingRestoreSpec", fmt.Sprintf("VMRestoreSpec missing %q", vr.Name))
+		r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "MissingRestoreSpec", "VMRestoreSpec missing %q", vr.Name)
 		if err := r.Status().Update(ctx, &vr); err != nil {
 
 			return fmt.Errorf("unable to update VMRollback status : %s", err)
@@ -151,10 +151,10 @@ func (r *VMRollbackReconciler) reconcile(ctx context.Context, vr v1beta1.VMRollb
 			vol := &v1beta1.Volume{Name: disk.Name,
 				VolumeSource: v1beta1.VolumeSource{PersistentVolumeClaim: &v1beta1.PersistentVolumeClaimVolumeSource{ClaimName: disk.SnapshotName}}}
 			if err != nil {
-				r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "RecoverSnapShotToPVCFailed", fmt.Sprintf("pvc restoration from snapshot failed %q with error %s", disk.Name, err))
+				r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "RecoverSnapShotToPVCFailed", "pvc restoration from snapshot failed %q with error %s", disk.Name, err)
 				return err
 			}
-			r.Recorder.Eventf(&vr, corev1.EventTypeNormal, "RecoverSnapShotToPVCSucceeded", fmt.Sprintf("pvc restoration from snapshot succeeded %q", disk.Name))
+			r.Recorder.Eventf(&vr, corev1.EventTypeNormal, "RecoverSnapShotToPVCSucceeded", "pvc restoration from snapshot succeeded %q", disk.Name)
 			mu.Lock()
 			volumes = append(volumes, vol)
 			mu.Unlock()
