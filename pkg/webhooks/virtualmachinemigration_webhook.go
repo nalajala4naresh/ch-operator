@@ -2,20 +2,17 @@ package webhooks
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	types "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -40,7 +37,7 @@ func init() {
 
 // SetupVirtualMachineMigrationWebhookWithManager registers the webhook for VirtualMachineMigration in the manager.
 func SetupVirtualMachineMigrationWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&types.VirtualMachineMigration{}).
+	return ctrl.NewWebhookManagedBy(mgr, &types.VirtualMachineMigration{}).
 		WithValidator(&VirtualMachineMigrationCustomValidator{}).
 		WithDefaulter(&VirtualMachineMigrationCustomDefaulter{}).
 		Complete()
@@ -59,15 +56,10 @@ type VirtualMachineMigrationCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &VirtualMachineMigrationCustomDefaulter{}
+var _ admission.Defaulter[*types.VirtualMachineMigration] = &VirtualMachineMigrationCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind VirtualMachineMigration.
-func (d *VirtualMachineMigrationCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	virtualmachinemigration, ok := obj.(*types.VirtualMachineMigration)
-
-	if !ok {
-		return fmt.Errorf("expected an VirtualMachineMigration object but got %T", obj)
-	}
+// Default implements admission.Defaulter so a webhook will be registered for the Kind VirtualMachineMigration.
+func (d *VirtualMachineMigrationCustomDefaulter) Default(ctx context.Context, virtualmachinemigration *types.VirtualMachineMigration) error {
 	virtualmachinemigrationlog.Info("Defaulting for VirtualMachineMigration", "name", virtualmachinemigration.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -89,14 +81,10 @@ type VirtualMachineMigrationCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &VirtualMachineMigrationCustomValidator{}
+var _ admission.Validator[*types.VirtualMachineMigration] = &VirtualMachineMigrationCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type VirtualMachineMigration.
-func (v *VirtualMachineMigrationCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	virtualmachinemigration, ok := obj.(*types.VirtualMachineMigration)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualMachineMigration object but got %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type VirtualMachineMigration.
+func (v *VirtualMachineMigrationCustomValidator) ValidateCreate(ctx context.Context, virtualmachinemigration *types.VirtualMachineMigration) (admission.Warnings, error) {
 	virtualmachinemigrationlog.Info("Validation for VirtualMachineMigration upon creation", "name", virtualmachinemigration.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -104,16 +92,8 @@ func (v *VirtualMachineMigrationCustomValidator) ValidateCreate(ctx context.Cont
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type VirtualMachineMigration.
-func (v *VirtualMachineMigrationCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	newVirtualMachineMigration, ok := newObj.(*types.VirtualMachineMigration)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualMachineMigration object for the newObj but got %T", newObj)
-	}
-	oldVirtualMachineMigration, ok := oldObj.(*types.VirtualMachineMigration)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualMachineMigration object for the oldObj but got %T", oldObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type VirtualMachineMigration.
+func (v *VirtualMachineMigrationCustomValidator) ValidateUpdate(ctx context.Context, oldVirtualMachineMigration, newVirtualMachineMigration *types.VirtualMachineMigration) (admission.Warnings, error) {
 	virtualmachinemigrationlog.Info("Validation for VirtualMachineMigration upon update", "name", newVirtualMachineMigration.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -122,12 +102,8 @@ func (v *VirtualMachineMigrationCustomValidator) ValidateUpdate(ctx context.Cont
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type VirtualMachineMigration.
-func (v *VirtualMachineMigrationCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	virtualmachinemigration, ok := obj.(*types.VirtualMachineMigration)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualMachineMigration object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type VirtualMachineMigration.
+func (v *VirtualMachineMigrationCustomValidator) ValidateDelete(ctx context.Context, virtualmachinemigration *types.VirtualMachineMigration) (admission.Warnings, error) {
 	virtualmachinemigrationlog.Info("Validation for VirtualMachineMigration upon deletion", "name", virtualmachinemigration.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

@@ -56,9 +56,8 @@ func NewManager(ctx context.Context, vm *v1beta1.VirtualMachine) (Manager, error
 			return nil, err
 		}
 		return newV2Manager(cg, cgroupPath, vmPID)
-	} else {
-
-		panic("Cgroup v1 is not supported")
-
 	}
+
+	// Kubernetes 1.35+ no longer supports cgroup v1 nodes.
+	return nil, fmt.Errorf("cgroup v1 is not supported")
 }

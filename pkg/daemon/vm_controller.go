@@ -136,7 +136,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 		chClient := getCloudHypervisorClient(vm)
 		err = chClient.VmRestore(ctx, &cloudhypervisor.RestoreConfig{SourceUrl: "file:///mnt/memory/snap"})
 		if err != nil {
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMRestoreFailed", fmt.Sprintf("failed to restore vm with error %s", err))
+			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMRestoreFailed", "failed to restore vm with error %s", err)
 			return err
 		}
 
@@ -744,6 +744,9 @@ func (r *VMReconciler) mountBlockVolume(ctx context.Context, vm *v1beta1.Virtual
 	cgroupManager, err := cgroup.NewManager(ctx, vm)
 	if err != nil {
 		return err
+	}
+	if cgroupManager == nil {
+		return fmt.Errorf("set cgroup for volume device %s: VM socket not found", volume)
 	}
 	if err := cgroupManager.Set(ctx, vm, &configs.Resources{
 		Devices: []*devices.Rule{{

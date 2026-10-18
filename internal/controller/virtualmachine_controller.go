@@ -172,7 +172,7 @@ func (r *VirtualMachineReconciler) gcVMPods(ctx context.Context, vm *v1beta1.Vir
 		if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("delete VM Pod: %s", err)
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "GCDeletedVMPod", fmt.Sprintf("Deleted VM Pod %q", vmPod.Name))
+		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "GCDeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
 	}
 	return nil
 }
@@ -554,6 +554,16 @@ func (r *VirtualMachineReconciler) reconcileVMConditions(ctx context.Context, vm
 	return nil
 }
 
+// getPodCondition returns the Pod condition of the given type, or nil if it is not present.
+func getPodCondition(pod *corev1.Pod, condType corev1.PodConditionType) *corev1.PodCondition {
+	for i := range pod.Status.Conditions {
+		if pod.Status.Conditions[i].Type == condType {
+			return &pod.Status.Conditions[i]
+		}
+	}
+	return nil
+}
+
 // reconcileVMResize handles the VMResizeInProgress phase
 // It resizes the Pod, waits for Pod resize to complete, then the daemon will resize the VM
 func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm *v1beta1.VirtualMachine) error {
@@ -574,21 +584,32 @@ func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm 
 		return fmt.Errorf("get VM Pod: %w", err)
 	}
 
-	// Check Pod resize status
-	if vmPod.Status.Resize == corev1.PodResizeStatusInProgress {
-		ctrl.Log.Info("VM resize: Pod resize in progress, waiting",
-			"vm", vm.Name, "pod", vmPod.Name)
+	// Check Pod resize status. Since Kubernetes 1.33 the kubelet reports resize progress through the
+	// PodResizePending and PodResizeInProgress conditions instead of the deprecated status.resize field.
+	if cond := getPodCondition(&vmPod, corev1.PodResizePending); cond != nil {
+		if cond.Reason == corev1.PodReasonInfeasible {
+			ctrl.Log.Info("VM resize: Pod resize infeasible",
+				"vm", vm.Name, "pod", vmPod.Name, "message", cond.Message)
+			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMPodResizeInfeasible",
+				"Pod resize is infeasible, cannot resize VM: %s", cond.Message)
+			// Transition back to Running
+			vm.Status.Phase = v1beta1.VirtualMachineRunning
+			return nil
+		}
 
+		ctrl.Log.Info("VM resize: Pod resize pending, waiting",
+			"vm", vm.Name, "pod", vmPod.Name, "reason", cond.Reason, "message", cond.Message)
 		return nil
 	}
 
-	if vmPod.Status.Resize == corev1.PodResizeStatusInfeasible {
-		ctrl.Log.Info("VM resize: Pod resize infeasible",
+	if cond := getPodCondition(&vmPod, corev1.PodResizeInProgress); cond != nil {
+		if cond.Reason == corev1.PodReasonError {
+			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMPodResizeError",
+				"Pod resize failed, kubelet will retry: %s", cond.Message)
+		}
+
+		ctrl.Log.Info("VM resize: Pod resize in progress, waiting",
 			"vm", vm.Name, "pod", vmPod.Name)
-		r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMPodResizeInfeasible",
-			"Pod resize is infeasible, cannot resize VM")
-		// Transition back to Running
-		vm.Status.Phase = v1beta1.VirtualMachineRunning
 		return nil
 	}
 
@@ -639,7 +660,7 @@ func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm 
 	}
 
 	if needsPodResize {
-		// Use Pod resize subresource (Kubernetes 1.35+)
+		// Use Pod resize subresource (Kubernetes 1.33+)
 		// Create a Pod with only the container resources we want to update
 		podResizePatch := vmPod.DeepCopy()
 
@@ -965,7 +986,7 @@ func (r *VirtualMachineReconciler) handleHotplugVolumes(ctx context.Context, vm 
 		if err := r.Create(ctx, volumePod); err != nil {
 			return err
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "CreatedHotplugVolumePod", fmt.Sprintf("Created VM Hotplug Volume Pod %q", volumePod.Name))
+		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "CreatedHotplugVolumePod", "Created VM Hotplug Volume Pod %q", volumePod.Name)
 	}
 
 	for _, pod := range oldPods {
@@ -973,7 +994,7 @@ func (r *VirtualMachineReconciler) handleHotplugVolumes(ctx context.Context, vm 
 			if err := r.Client.Delete(ctx, pod); err != nil {
 				return err
 			}
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedHotplugVolumePod", fmt.Sprintf("Deleted VM Hotplug Volume Pod %q", pod.Name))
+			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedHotplugVolumePod", "Deleted VM Hotplug Volume Pod %q", pod.Name)
 		}
 	}
 	return nil
@@ -1576,7 +1597,7 @@ func (r *VirtualMachineReconciler) deleteAllVMPods(ctx context.Context, vm *v1be
 		if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 			return false, fmt.Errorf("delete VM Pod: %s", err)
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedVMPod", fmt.Sprintf("Deleted VM Pod %q", vmPod.Name))
+		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
 	}
 
 	return true, nil

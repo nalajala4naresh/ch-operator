@@ -2,16 +2,13 @@ package webhooks
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 
 	types "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -21,7 +18,7 @@ var vmsetlog = logf.Log.WithName("vmset-resource")
 
 // SetupVMSetWebhookWithManager registers the webhook for VMSet in the manager.
 func SetupVMSetWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&types.VMSet{}).
+	return ctrl.NewWebhookManagedBy(mgr, &types.VMSet{}).
 		WithValidator(&VMSetCustomValidator{}).
 		WithDefaulter(&VMSetCustomDefaulter{}).
 		Complete()
@@ -40,15 +37,10 @@ type VMSetCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &VMSetCustomDefaulter{}
+var _ admission.Defaulter[*types.VMSet] = &VMSetCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind VMSet.
-func (d *VMSetCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	vmset, ok := obj.(*types.VMSet)
-
-	if !ok {
-		return fmt.Errorf("expected an VMSet object but got %T", obj)
-	}
+// Default implements admission.Defaulter so a webhook will be registered for the Kind VMSet.
+func (d *VMSetCustomDefaulter) Default(ctx context.Context, vmset *types.VMSet) error {
 	vmsetlog.Info("Defaulting for VMSet", "name", vmset.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -70,15 +62,10 @@ type VMSetCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &VMSetCustomValidator{}
+var _ admission.Validator[*types.VMSet] = &VMSetCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type VMSet.
-func (v *VMSetCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	vmset, ok := obj.(*types.VMSet)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMSet object but got %T", obj)
-	}
-
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type VMSet.
+func (v *VMSetCustomValidator) ValidateCreate(ctx context.Context, vmset *types.VMSet) (admission.Warnings, error) {
 	// For CREATE, just validate that selector is not empty
 	if len(vmset.Spec.Selector.MatchLabels) == 0 {
 		return nil, apierrors.NewInvalid(
@@ -95,16 +82,8 @@ func (v *VMSetCustomValidator) ValidateCreate(ctx context.Context, obj runtime.O
 
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type VMSet.
-func (v *VMSetCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	newSet, ok := newObj.(*types.VMSet)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMSet object for the newObj but got %T", newObj)
-	}
-	oldSet, ok := oldObj.(*types.VMSet)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMSet object for the newObj but got %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type VMSet.
+func (v *VMSetCustomValidator) ValidateUpdate(ctx context.Context, oldSet, newSet *types.VMSet) (admission.Warnings, error) {
 	vmsetlog.Info("Validation for VMSet upon update", "name", newSet.GetName())
 
 	if !reflect.DeepEqual(newSet.Spec.Selector, oldSet.Spec.Selector) {
@@ -121,12 +100,8 @@ func (v *VMSetCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newOb
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type VMSet.
-func (v *VMSetCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	vmset, ok := obj.(*types.VMSet)
-	if !ok {
-		return nil, fmt.Errorf("expected a VMSet object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type VMSet.
+func (v *VMSetCustomValidator) ValidateDelete(ctx context.Context, vmset *types.VMSet) (admission.Warnings, error) {
 	vmsetlog.Info("Validation for VMSet upon deletion", "name", vmset.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

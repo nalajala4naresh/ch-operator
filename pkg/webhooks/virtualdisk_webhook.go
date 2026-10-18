@@ -8,12 +8,9 @@ package webhooks
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	cloudhypervisorquilltodayv1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
@@ -25,7 +22,7 @@ var virtualdisklog = logf.Log.WithName("virtualdisk-resource")
 
 // SetupVirtualDiskWebhookWithManager registers the webhook for VirtualDisk in the manager.
 func SetupVirtualDiskWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&cloudhypervisorquilltodayv1beta1.VirtualDisk{}).
+	return ctrl.NewWebhookManagedBy(mgr, &cloudhypervisorquilltodayv1beta1.VirtualDisk{}).
 		WithValidator(&VirtualDiskCustomValidator{}).
 		WithDefaulter(&VirtualDiskCustomDefaulter{}).
 		Complete()
@@ -44,15 +41,10 @@ type VirtualDiskCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &VirtualDiskCustomDefaulter{}
+var _ admission.Defaulter[*cloudhypervisorquilltodayv1beta1.VirtualDisk] = &VirtualDiskCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind VirtualDisk.
-func (d *VirtualDiskCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	virtualdisk, ok := obj.(*cloudhypervisorquilltodayv1beta1.VirtualDisk)
-
-	if !ok {
-		return fmt.Errorf("expected an VirtualDisk object but got %T", obj)
-	}
+// Default implements admission.Defaulter so a webhook will be registered for the Kind VirtualDisk.
+func (d *VirtualDiskCustomDefaulter) Default(_ context.Context, virtualdisk *cloudhypervisorquilltodayv1beta1.VirtualDisk) error {
 	virtualdisklog.Info("Defaulting for VirtualDisk", "name", virtualdisk.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -74,14 +66,10 @@ type VirtualDiskCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &VirtualDiskCustomValidator{}
+var _ admission.Validator[*cloudhypervisorquilltodayv1beta1.VirtualDisk] = &VirtualDiskCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type VirtualDisk.
-func (v *VirtualDiskCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	virtualdisk, ok := obj.(*cloudhypervisorquilltodayv1beta1.VirtualDisk)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualDisk object but got %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type VirtualDisk.
+func (v *VirtualDiskCustomValidator) ValidateCreate(_ context.Context, virtualdisk *cloudhypervisorquilltodayv1beta1.VirtualDisk) (admission.Warnings, error) {
 	virtualdisklog.Info("Validation for VirtualDisk upon creation", "name", virtualdisk.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -89,12 +77,8 @@ func (v *VirtualDiskCustomValidator) ValidateCreate(_ context.Context, obj runti
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type VirtualDisk.
-func (v *VirtualDiskCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	virtualdisk, ok := newObj.(*cloudhypervisorquilltodayv1beta1.VirtualDisk)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualDisk object for the newObj but got %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type VirtualDisk.
+func (v *VirtualDiskCustomValidator) ValidateUpdate(_ context.Context, oldObj, virtualdisk *cloudhypervisorquilltodayv1beta1.VirtualDisk) (admission.Warnings, error) {
 	virtualdisklog.Info("Validation for VirtualDisk upon update", "name", virtualdisk.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -102,12 +86,8 @@ func (v *VirtualDiskCustomValidator) ValidateUpdate(_ context.Context, oldObj, n
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type VirtualDisk.
-func (v *VirtualDiskCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	virtualdisk, ok := obj.(*cloudhypervisorquilltodayv1beta1.VirtualDisk)
-	if !ok {
-		return nil, fmt.Errorf("expected a VirtualDisk object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type VirtualDisk.
+func (v *VirtualDiskCustomValidator) ValidateDelete(ctx context.Context, virtualdisk *cloudhypervisorquilltodayv1beta1.VirtualDisk) (admission.Warnings, error) {
 	virtualdisklog.Info("Validation for VirtualDisk upon deletion", "name", virtualdisk.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.
