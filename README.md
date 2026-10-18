@@ -54,7 +54,7 @@ ch-operator currently supports the following container runtimes:
 
 - Docker
 - containerd
-- cloud-hypervisor v50.0 is supported.
+- cloud-hypervisor v54.0 is supported.
 
 Other container runtimes, which do not use virtualization features, should work too. However, they are not tested officially.
 
