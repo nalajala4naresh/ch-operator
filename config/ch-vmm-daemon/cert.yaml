@@ -4,12 +4,16 @@ metadata:
   name: ch-vmm-daemon-cert
   namespace: ch-vmm-system
 spec:
-  issuerRef:
-    kind: Issuer
-    name: ch-vmm-daemon-cert-issuer
   dnsNames:
     - "ch-vmm-daemon.ch-vmm-system.svc"
     - "ch-vmm-daemon.ch-vmm-system.svc.cluster.local"
     - "*.ch-vmm-daemon.ch-vmm-system.svc"
     - "*.ch-vmm-daemon.ch-vmm-system.svc.cluster.local"
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    kind: Issuer
+    name: ch-vmm-ca-issuer
   secretName: ch-vmm-daemon-cert

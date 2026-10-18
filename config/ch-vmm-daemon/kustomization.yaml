@@ -3,6 +3,7 @@ resources:
   - rolebinding.yaml
   - role.yaml
   - sa.yaml
+  - ca.yaml
   - cert.yaml
   - configmap.yaml
   - service.yaml

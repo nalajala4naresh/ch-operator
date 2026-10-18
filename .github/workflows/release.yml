@@ -58,6 +58,15 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
+          file: build/ch-vmm-gateway/Dockerfile
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          tags: nalajalanaresh/ch-vmm-gateway:${{ steps.get_version.outputs.version }}
+          platforms: linux/amd64
+          push: true
+
+      - uses: docker/build-push-action@v6
+        with:
           file: build/virtmanager-container-disk-base/Dockerfile
           tags: nalajalanaresh/virtmanager-container-disk-base
           platforms: linux/amd64
@@ -82,8 +91,25 @@ jobs:
           chmod +x /tmp/skaffold
           /tmp/skaffold render --default-repo=nalajalanaresh --offline=true -t $GITHUB_REF_NAME > ch-operator.yaml
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build kubectl-ch
+        env:
+          GOPRIVATE: github.com/nalajala4naresh/*
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          git config --global url."https://${GITHUB_TOKEN}:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}; arch=${target#*/}
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o kubectl-ch_${os}_${arch} ./cmd/kubectl-ch
+          done
+
       - uses: softprops/action-gh-release@v2
         with:
-          files: ch-operator.yaml
+          files: |
+            ch-operator.yaml
+            kubectl-ch_*
         env:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

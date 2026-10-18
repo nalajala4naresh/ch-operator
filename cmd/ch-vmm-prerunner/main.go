@@ -27,12 +27,14 @@ import (
 	"github.com/nalajala4naresh/ch-operator/pkg/cloudhypervisor"
 	"github.com/nalajala4naresh/ch-operator/pkg/cloudutils"
 	"github.com/nalajala4naresh/ch-operator/pkg/cpuset"
+	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 	"github.com/nalajala4naresh/ch-operator/pkg/volumeutil"
 	"github.com/nalajala4naresh/chvmm-api/v1beta1"
 )
 
 const AGENT_VSOCK = "/var/run/ch-vmm/agent.vsock"
-const SERIAL_SOCK = "/var/run/ch-vmm/serial.sock"
+
+var SERIAL_SOCK = filepath.Join(vmaccess.VMPodRunDir, vmaccess.SerialSocketName)
 
 const AGENT_CID = 3
 
@@ -105,8 +107,11 @@ func buildChVMConfig(ctx context.Context, vm *v1beta1.VirtualMachine) (*cloudhyp
 		Console: &cloudhypervisor.ConsoleConfig{
 			Mode: "Pty",
 		},
+		// The serial console is exposed on a Unix socket so ch-vmm-daemon can attach to it on behalf
+		// of ch-vmm-gateway (kubectl ch console).
 		Serial: &cloudhypervisor.SerialConfig{
-			Mode: "Tty",
+			Mode:   "Socket",
+			Socket: SERIAL_SOCK,
 		},
 		Payload: &cloudhypervisor.PayloadConfig{
 			Kernel: "/var/lib/cloud-hypervisor/hypervisor-fw",

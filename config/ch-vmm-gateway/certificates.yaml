@@ -1,0 +1,36 @@
+# Serving certificate for kube-apiserver -> ch-vmm-gateway. cert-manager injects its CA into the
+# APIService (cert-manager.io/inject-ca-from), so the aggregator verifies ch-vmm-gateway.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ch-vmm-gateway-serving-cert
+  namespace: ch-vmm-system
+spec:
+  dnsNames:
+    - ch-vmm-gateway.ch-vmm-system.svc
+    - ch-vmm-gateway.ch-vmm-system.svc.cluster.local
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    kind: Issuer
+    name: ch-vmm-ca-issuer
+  secretName: ch-vmm-gateway-serving-cert
+---
+# Client certificate for ch-vmm-gateway -> ch-vmm-daemon. The daemon only accepts this common name.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ch-vmm-gateway-client-cert
+  namespace: ch-vmm-system
+spec:
+  commonName: ch-vmm-gateway
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    kind: Issuer
+    name: ch-vmm-ca-issuer
+  secretName: ch-vmm-gateway-client-cert

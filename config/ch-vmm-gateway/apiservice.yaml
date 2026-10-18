@@ -1,0 +1,15 @@
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.subresources.cloudhypervisor.quill.today
+  annotations:
+    cert-manager.io/inject-ca-from: ch-vmm-system/ch-vmm-gateway-serving-cert
+spec:
+  group: subresources.cloudhypervisor.quill.today
+  version: v1beta1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: ch-vmm-gateway
+    namespace: ch-vmm-system
+    port: 443

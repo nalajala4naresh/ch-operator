@@ -1,0 +1,82 @@
+# What ch-vmm-gateway itself may do.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ch-vmm-gateway
+rules:
+  - apiGroups: ["cloudhypervisor.quill.today"]
+    resources: ["virtualmachines"]
+    verbs: ["get"]
+  - apiGroups: ["cloudhypervisor.quill.today"]
+    resources: ["virtualmachines/status"]
+    verbs: ["update"]
+  - apiGroups: ["cloudhypervisor.quill.today"]
+    resources: ["virtualmachinemigrations"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ch-vmm-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ch-vmm-gateway
+subjects:
+  - kind: ServiceAccount
+    name: ch-vmm-gateway
+    namespace: ch-vmm-system
+---
+# Delegated authentication and authorization (TokenReview, SubjectAccessReview).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ch-vmm-gateway:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: ch-vmm-gateway
+    namespace: ch-vmm-system
+---
+# Read the front-proxy client CA and allowed request headers set by kube-apiserver.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ch-vmm-gateway:extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: ch-vmm-gateway
+    namespace: ch-vmm-system
+---
+# Find the ch-vmm-daemon pod on a VM's node.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ch-vmm-gateway
+  namespace: ch-vmm-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ch-vmm-gateway
+  namespace: ch-vmm-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ch-vmm-gateway
+subjects:
+  - kind: ServiceAccount
+    name: ch-vmm-gateway
+    namespace: ch-vmm-system
