@@ -30,6 +30,10 @@ spec:
                   fieldPath: status.podIP
           args:
             - --zap-time-encoding=iso8601
+          ports:
+            - name: vm-access
+              containerPort: 8444
+              protocol: TCP
           volumeMounts:
             - name: daemon-config
               mountPath: /config

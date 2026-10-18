@@ -1,0 +1,30 @@
+# Roles for end users. Grant them with a RoleBinding in a namespace. They are also aggregated
+# into the built-in admin and edit roles, so namespace editors can use their VMs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ch-vmm-vm-access
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: ["subresources.cloudhypervisor.quill.today"]
+    resources: ["virtualmachines/console", "virtualmachines/portforward"]
+    # Streams are authorized as "create" (like pods/exec), so read-only roles never grant them.
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ch-vmm-vm-operator
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: ["subresources.cloudhypervisor.quill.today"]
+    resources:
+      - virtualmachines/pause
+      - virtualmachines/unpause
+      - virtualmachines/restart
+      - virtualmachines/migrate
+    verbs: ["create"]

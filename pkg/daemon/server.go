@@ -11,9 +11,9 @@ import (
 	"github.com/nalajala4naresh/ch-operator/pkg/cloudutils"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/proto"
 	daemon_proto "github.com/nalajala4naresh/ch-operator/pkg/daemon/proto"
+	"github.com/nalajala4naresh/ch-operator/pkg/vmactions"
 	"github.com/nalajala4naresh/ch-operator/pkg/volumeutil"
 	"github.com/nalajala4naresh/chvmm-api/v1beta1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
@@ -21,10 +21,13 @@ import (
 	"google.golang.org/grpc/status"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// VMManager serves the gRPC VmService.
+//
+// Deprecated: VM actions are served by ch-vmm-gateway as subresources (kubectl ch pause|unpause|restart),
+// which enforces Kubernetes RBAC. This gRPC service will be removed in a future release.
 type VMManager struct {
 	client.Client
 	daemon_proto.UnimplementedVmServiceServer
@@ -54,31 +57,8 @@ func (vmm *VMManager) GetVMStatus(ctx context.Context, req *daemon_proto.GetVmst
 }
 
 func (vmm *VMManager) PauseVM(ctx context.Context, req *daemon_proto.PauseVMRequest) (*emptypb.Empty, error) {
-
-	vm, err := vmm.getVM(ctx, req.Name, req.Namespace)
-	if err != nil {
-		return nil, err
-	}
-
-	//check the precondition
-	out := new(emptypb.Empty)
-
-	if vm.Status.Phase != v1beta1.VirtualMachineRunning {
-
-		return nil, status.New(codes.FailedPrecondition, "vm is not in running state").Err()
-
-	}
-
-	vm.Status.Phase = v1beta1.VirtualMachinePaused
-
-	if err := vmm.Status().Update(ctx, vm); err != nil {
-		if !apierrors.IsConflict(err) {
-			ctrl.LoggerFrom(ctx).Error(err, "update VM status")
-		}
-	}
-
-	return out, nil
-
+	err := vmactions.Pause(ctx, vmm.Client, types.NamespacedName{Namespace: req.Namespace, Name: req.Name})
+	return new(emptypb.Empty), toGRPCError(err)
 }
 
 func (vmm *VMManager) getVM(ctx context.Context, name, namespace string) (*v1beta1.VirtualMachine, error) {
@@ -102,55 +82,27 @@ func (vmm *VMManager) getVM(ctx context.Context, name, namespace string) (*v1bet
 }
 
 func (vmm *VMManager) ResumeVM(ctx context.Context, req *daemon_proto.ResumeVMRequest) (*emptypb.Empty, error) {
-
-	vm, err := vmm.getVM(ctx, req.Name, req.Namespace)
-	if err != nil {
-		return nil, err
-	}
-	//now talk to vm.sock to pause vm
-	out := new(emptypb.Empty)
-	if vm.Status.Phase != v1beta1.VirtualMachinePaused {
-
-		return nil, status.New(codes.FailedPrecondition, "vm is not in pasued state").Err()
-
-	}
-
-	vm.Status.Phase = v1beta1.VirtualMachineResumed
-
-	if err := vmm.Status().Update(ctx, vm); err != nil {
-		if !apierrors.IsConflict(err) {
-			ctrl.LoggerFrom(ctx).Error(err, "resume vm failure")
-		}
-	}
-
-	return out, nil
-
+	err := vmactions.Unpause(ctx, vmm.Client, types.NamespacedName{Namespace: req.Namespace, Name: req.Name})
+	return new(emptypb.Empty), toGRPCError(err)
 }
 
 func (vmm *VMManager) RebootVM(ctx context.Context, req *daemon_proto.RebootVMRequest) (*emptypb.Empty, error) {
-	vm, err := vmm.getVM(ctx, req.Name, req.Namespace)
-	if err != nil {
-		return nil, err
+	err := vmactions.Restart(ctx, vmm.Client, types.NamespacedName{Namespace: req.Namespace, Name: req.Name})
+	return new(emptypb.Empty), toGRPCError(err)
+}
+
+// toGRPCError maps a vmactions error to a gRPC status error.
+func toGRPCError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case k8s_errors.IsNotFound(err):
+		return status.New(codes.NotFound, err.Error()).Err()
+	case k8s_errors.IsConflict(err):
+		return status.New(codes.FailedPrecondition, err.Error()).Err()
+	default:
+		return status.New(codes.Internal, err.Error()).Err()
 	}
-
-	//now talk to vm.sock to pause vm
-	out := new(emptypb.Empty)
-	if vm.Status.Phase != v1beta1.VirtualMachineRunning {
-
-		return nil, status.New(codes.FailedPrecondition, "VM is not in running state").Err()
-
-	}
-
-	vm.Status.PowerAction = v1beta1.VirtualMachineReboot
-
-	if err := vmm.Status().Update(ctx, vm); err != nil {
-		if !apierrors.IsConflict(err) {
-			ctrl.LoggerFrom(ctx).Error(err, "Failed to reboot vm")
-		}
-	}
-
-	return out, nil
-
 }
 
 func (vmm *VMManager) CreateSnapshot(ctx context.Context, req *daemon_proto.CreateVMSnapshot) (*emptypb.Empty, error) {

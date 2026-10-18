@@ -1,0 +1,28 @@
+# A namespace-local CA for mTLS between ch-vmm-gateway and ch-vmm-daemon. The self-signed issuer
+# only signs the CA; the CA issuer signs the daemon serving certificate and ch-vmm-gateway's client
+# certificate, so each side can verify the other against ca.crt.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ch-vmm-ca
+  namespace: ch-vmm-system
+spec:
+  isCA: true
+  commonName: ch-vmm-ca
+  secretName: ch-vmm-ca
+  duration: 87600h # 10y
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: Issuer
+    name: ch-vmm-daemon-cert-issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ch-vmm-ca-issuer
+  namespace: ch-vmm-system
+spec:
+  ca:
+    secretName: ch-vmm-ca

@@ -1,0 +1,9 @@
+resources:
+  - sa.yaml
+  - rbac.yaml
+  - user-roles.yaml
+  - certificates.yaml
+  - deployment.yaml
+  - service.yaml
+  - apiservice.yaml
+  - pdb.yaml

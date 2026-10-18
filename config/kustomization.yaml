@@ -3,4 +3,5 @@ resources:
   - namespace.yaml
   - ch-vmm-controller
   - ch-vmm-daemon
+  - ch-vmm-gateway
   

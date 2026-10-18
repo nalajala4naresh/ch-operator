@@ -28,7 +28,11 @@ func init() {
 
 func main() {
 
-	rootCmd := &cobra.Command{Use: "vmm", Short: "vmm is cli to talk to vm's running on k8s cluster"}
+	rootCmd := &cobra.Command{Use: "vmm", Short: "vmm is cli to talk to vm's running on k8s cluster",
+		PersistentPreRun: func(*cobra.Command, []string) {
+			fmt.Fprintln(os.Stderr, "Warning: vmm is deprecated and bypasses Kubernetes RBAC; use `kubectl ch pause|unpause|restart` instead.")
+		},
+	}
 	runopts := &CRunopts{}
 	rootCmd.AddCommand(PauseVmCommand(runopts))
 	rootCmd.AddCommand(ResumeVmCommand(runopts))

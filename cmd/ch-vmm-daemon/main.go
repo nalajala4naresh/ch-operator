@@ -21,9 +21,11 @@ import (
 
 	"github.com/nalajala4naresh/ch-operator/pkg/config"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon"
+	"github.com/nalajala4naresh/ch-operator/pkg/daemon/access"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/deviceplugin"
 	daemon_proto "github.com/nalajala4naresh/ch-operator/pkg/daemon/proto"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/tcpproxy"
+	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 )
 
@@ -43,6 +45,13 @@ func main() {
 	var probeAddr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	var accessAddr, accessCertDir, accessClientCN string
+	flag.StringVar(&accessAddr, "access-bind-address", fmt.Sprintf(":%d", vmaccess.DaemonAccessPort),
+		"The address the VM access (console, port-forward) endpoint binds to. Empty disables it.")
+	flag.StringVar(&accessCertDir, "access-cert-dir", "/var/lib/virtmanager/daemon/cert",
+		"Directory with tls.crt, tls.key and ca.crt for the VM access endpoint.")
+	flag.StringVar(&accessClientCN, "access-allowed-client", "ch-vmm-gateway",
+		"Common name of the only client certificate allowed to use the VM access endpoint.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -87,6 +96,23 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VMSnapShotReconciler")
 		os.Exit(1)
+	}
+
+	if accessAddr != "" {
+		tlsConfig, err := vmaccess.ServerTLSConfig(accessCertDir, accessClientCN)
+		if err != nil {
+			setupLog.Error(err, "unable to load VM access TLS config")
+			os.Exit(1)
+		}
+		if err := mgr.Add(&access.Server{
+			Client:    mgr.GetClient(),
+			NodeName:  os.Getenv("NODE_NAME"),
+			Addr:      accessAddr,
+			TLSConfig: tlsConfig,
+		}); err != nil {
+			setupLog.Error(err, "unable to add VM access server")
+			os.Exit(1)
+		}
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
