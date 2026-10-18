@@ -15,6 +15,9 @@ build:
     - image: ch-vmm-daemon
       docker:
         dockerfile: build/ch-vmm-daemon/Dockerfile 
+    - image: ch-vmm-gateway
+      docker:
+        dockerfile: build/ch-vmm-gateway/Dockerfile
     - image: ch-vmm-prerunner
       docker:
         dockerfile: build/ch-vmm-prerunner/Dockerfile.ch
@@ -24,3 +27,4 @@ deploy:
       - config/crd
       - config/ch-vmm-controller/default
       - config/ch-vmm-daemon
+      - config/ch-vmm-gateway
