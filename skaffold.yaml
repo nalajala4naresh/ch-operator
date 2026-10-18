@@ -24,7 +24,7 @@ build:
 deploy:
   kustomize:
     paths:
-      - config/crd
+      # config/ch-vmm-controller/default includes the CRDs (config/crd).
       - config/ch-vmm-controller/default
       - config/ch-vmm-daemon
       - config/ch-vmm-gateway
