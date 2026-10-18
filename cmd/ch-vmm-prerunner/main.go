@@ -501,11 +501,25 @@ func setupBridgeNetwork(linkName string, cidr string, netConfig *cloudhypervisor
 			}
 			routes = append(routes, route)
 		}
-		if err := startDHCPServer(bridgeName, linkMAC, linkAddr, linkGateway, routes); err != nil {
+		if err := startDHCPServer(bridgeName, linkMAC, guestAddr(linkAddr, linkRoutes), linkGateway, routes); err != nil {
 			return fmt.Errorf("start DHCP server: %s", err)
 		}
 	}
 	return nil
+}
+
+// guestAddr returns the address to hand to the guest. The pod's prefix length is kept only if
+// the pod reached its subnet on-link. CNIs such as GKE's ptp assign a /24 but route the subnet
+// via the gateway; giving the guest that /24 would add an on-link route, so it would ARP for
+// same-node pods (which nobody answers) instead of replying through the gateway.
+func guestAddr(addr *net.IPNet, routes []netlink.Route) *net.IPNet {
+	subnet := &net.IPNet{IP: addr.IP.Mask(addr.Mask), Mask: addr.Mask}
+	for _, route := range routes {
+		if route.Dst != nil && len(route.Gw) == 0 && route.Dst.String() == subnet.String() {
+			return addr
+		}
+	}
+	return &net.IPNet{IP: addr.IP, Mask: net.CIDRMask(32, 32)}
 }
 
 func setupMasqueradeNetwork(linkName string, cidr string, netConfig *cloudhypervisor.NetConfig) error {
