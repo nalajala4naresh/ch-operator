@@ -12,23 +12,10 @@ rules:
   - create
   - patch
   - update
-  - watch
-  - get
 - apiGroups:
   - ""
   resources:
   - persistentvolumeclaims
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - pods
   verbs:
   - create
@@ -43,7 +30,64 @@ rules:
   resources:
   - pods/resize
   verbs:
-  - update 
+  - update
+- apiGroups:
+  - cdi.kubevirt.io
+  resources:
+  - datavolumes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cloudhypervisor.quill.today
+  resources:
+  - virtualdisks
+  - virtualdisksnapshots
+  - virtualmachines
+  - vmpools
+  - vmrollbacks
+  - vmsets
+  - vmsnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cloudhypervisor.quill.today
+  resources:
+  - virtualdisks/finalizers
+  - virtualdisksnapshots/finalizers
+  - virtualmachines/finalizers
+  - vmpools/finalizers
+  - vmrollbacks/finalizers
+  - vmsets/finalizers
+  - vmsnapshots/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - cloudhypervisor.quill.today
+  resources:
+  - virtualdisks/status
+  - virtualdisksnapshots/status
+  - virtualmachinemigrations/status
+  - virtualmachines/status
+  - vmpools/status
+  - vmrollbacks/status
+  - vmsets/status
+  - vmsnapshots/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - cloudhypervisor.quill.today
   resources:
@@ -55,30 +99,18 @@ rules:
   - update
   - watch
 - apiGroups:
-  - cloudhypervisor.quill.today
+  - k8s.cni.cncf.io
   resources:
-  - virtualmachinemigrations/status
-  - virtualmachines/status
-  - vmpools/status
-  - vmrollbacks/status
-  - vmsets/status
-  - vmsnapshots/status
-  - virtualdisks/status
-  - virtualdisksnapshots/status
+  - network-attachment-definitions
   verbs:
   - get
-  - patch
-  - update
+  - list
+  - watch
 - apiGroups:
-  - cloudhypervisor.quill.today
+  - snapshot.storage.k8s.io
   resources:
-  - virtualmachines
-  - vmpools 
-  - vmrollbacks
-  - vmsets
-  - vmsnapshots
-  - virtualdisks
-  - virtualdisksnapshots
+  - volumesnapshotcontents
+  - volumesnapshots
   verbs:
   - create
   - delete
@@ -87,33 +119,3 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - cloudhypervisor.quill.today
-  resources:
-  - virtualmachines/finalizers
-  - vmpools/finalizers
-  - vmrollbacks/finalizers
-  - vmsets/finalizers
-  - vmsnapshots/finalizers
-  - virtualdisks/finalizers
-  - virtualdisksnapshots/finalizers
-  verbs:
-  - update
-- apiGroups: 
-    - snapshot.storage.k8s.io
-  resources: 
-    - volumesnapshots 
-    - volumesnapshotcontents
-    - volumesnapshotclasses
-  verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
-- apiGroups:
-   - cdi.kubevirt.io
-  resources:
-  - datavolumes
-  verbs:
-  - create
-  - patch
-  - list
-  - update
-  - watch
-  - delete

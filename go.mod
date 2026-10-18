@@ -24,7 +24,7 @@ require (
 	github.com/mdlayher/vsock v1.1.1
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/mostynb/zstdpool-syncpool v0.0.13
-	github.com/nalajala4naresh/chvmm-api v1.24.0
+	github.com/nalajala4naresh/chvmm-api v1.29.1
 	github.com/namsral/flag v1.7.4-pre
 	github.com/nasa9084/go-openapi v0.0.0-20240619113810-c62c58bb3428
 	github.com/onsi/ginkgo/v2 v2.33.1

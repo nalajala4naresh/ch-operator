@@ -39,6 +39,7 @@ type VMSnapShotReconciler struct {
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=vmsnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=vmsnapshots/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=vmsnapshots/finalizers,verbs=update
+
 func (s *VMSnapShotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 	l.Info("reconciling for snapshot", "snapshot", req.NamespacedName)

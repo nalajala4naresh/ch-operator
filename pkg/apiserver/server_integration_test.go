@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nalajala4naresh/chvmm-api/subresources"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,8 +24,6 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-
-	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 )
 
 // TestServerAuthorization runs ch-vmm-gateway against a real kube-apiserver (envtest) and checks
@@ -67,12 +66,12 @@ func TestServerAuthorization(t *testing.T) {
 	// alice may pause VMs and open consoles; viewer has "get" on every subresource, which must
 	// not be enough to open a console; bob has no permissions.
 	grant(t, c, "alice", rbacv1.PolicyRule{
-		APIGroups: []string{vmaccess.GroupName},
+		APIGroups: []string{subresources.GroupName},
 		Resources: []string{"virtualmachines/pause", "virtualmachines/console"},
 		Verbs:     []string{"create"},
 	})
 	grant(t, c, "viewer", rbacv1.PolicyRule{
-		APIGroups: []string{vmaccess.GroupName},
+		APIGroups: []string{subresources.GroupName},
 		Resources: []string{"virtualmachines/console", "virtualmachines/portforward"},
 		Verbs:     []string{"get", "list", "watch"},
 	})
@@ -81,7 +80,7 @@ func TestServerAuthorization(t *testing.T) {
 	bob := addUser(t, env, "bob")
 
 	addr := startAPIServer(t, env, admin, c)
-	url := "https://" + addr + "/apis/" + vmaccess.GroupName + "/v1beta1/namespaces/default/virtualmachines/vm1/"
+	url := "https://" + addr + "/apis/" + subresources.GroupName + "/v1beta1/namespaces/default/virtualmachines/vm1/"
 
 	if code := do(t, bob, http.MethodPost, url+"pause"); code != http.StatusForbidden {
 		t.Fatalf("bob pause: code %d, want 403", code)
@@ -112,7 +111,7 @@ func TestServerAuthorization(t *testing.T) {
 	}
 
 	// Discovery is readable by any authenticated user (system:discovery).
-	if code := do(t, bob, http.MethodGet, "https://"+addr+"/apis/"+vmaccess.GroupName+"/v1beta1"); code != http.StatusOK {
+	if code := do(t, bob, http.MethodGet, "https://"+addr+"/apis/"+subresources.GroupName+"/v1beta1"); code != http.StatusOK {
 		t.Fatalf("bob discovery: code %d, want 200", code)
 	}
 }

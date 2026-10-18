@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.1
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: vmpools.cloudhypervisor.quill.today
 spec:
   group: cloudhypervisor.quill.today
@@ -494,7 +494,6 @@ spec:
                                             pod labels will be ignored. The default value is empty.
                                             The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                             Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                            This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                           items:
                                             type: string
                                           type: array
@@ -509,7 +508,6 @@ spec:
                                             pod labels will be ignored. The default value is empty.
                                             The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                             Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                            This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                           items:
                                             type: string
                                           type: array
@@ -677,7 +675,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -692,7 +689,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -786,8 +782,8 @@ spec:
                                   most preferred is the one with the greatest sum of weights, i.e.
                                   for each node that meets all of the scheduling requirements (resource
                                   request, requiredDuringScheduling anti-affinity expressions, etc.),
-                                  compute a sum by iterating through the elements of this field and adding
-                                  "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                                  compute a sum by iterating through the elements of this field and subtracting
+                                  "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                                   node(s) with the highest sum are the most preferred.
                                 items:
                                   description: The weights of all of the matched WeightedPodAffinityTerm
@@ -858,7 +854,6 @@ spec:
                                             pod labels will be ignored. The default value is empty.
                                             The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                             Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                            This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                           items:
                                             type: string
                                           type: array
@@ -873,7 +868,6 @@ spec:
                                             pod labels will be ignored. The default value is empty.
                                             The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                             Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                            This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                           items:
                                             type: string
                                           type: array
@@ -1041,7 +1035,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -1056,7 +1049,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -1147,6 +1139,16 @@ spec:
                                 type: integer
                               dedicatedCPUPlacement:
                                 type: boolean
+                              maxVCPUs:
+                                description: |-
+                                  MaxVCPUs is the maximum number of vCPUs this VM can be hot-plugged up
+                                  to without a restart. If set, it must be >= sockets*coresPerSocket.
+                                  The pod's CPU limit is sized to MaxVCPUs (instead of
+                                  sockets*coresPerSocket) so the cgroup has headroom for a future vCPU
+                                  hotplug.
+                                format: int32
+                                minimum: 0
+                                type: integer
                               sockets:
                                 format: int32
                                 type: integer
@@ -1154,8 +1156,18 @@ spec:
                           disks:
                             items:
                               properties:
+                                direct:
+                                  description: |-
+                                    Direct enables O_DIRECT I/O on the backing file, bypassing the host page cache.
+                                    Defaults to true.
+                                  type: boolean
                                 name:
                                   type: string
+                                numQueues:
+                                  description: |-
+                                    NumQueues sets the number of virtqueues for the virtio-block device. Defaults to the
+                                    Cloud Hypervisor default (1) when unset.
+                                  type: integer
                                 readOnly:
                                   type: boolean
                               required:
@@ -1169,6 +1181,20 @@ spec:
                                   type: string
                               required:
                               - name
+                              type: object
+                            type: array
+                          gpus:
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                resourceEnvName:
+                                  type: string
+                                resourceName:
+                                  type: string
+                              required:
+                              - name
+                              - resourceName
                               type: object
                             type: array
                           interfaces:
@@ -1185,6 +1211,11 @@ spec:
                                   type: object
                                 name:
                                   type: string
+                                numQueues:
+                                  description: |-
+                                    NumQueues sets the number of virtqueues for the virtio-net device (bridge, masquerade
+                                    and vhost-user interfaces). Defaults to the Cloud Hypervisor default (1) when unset.
+                                  type: integer
                                 sriov:
                                   type: object
                                 vdpa:
@@ -1216,6 +1247,25 @@ spec:
                             type: object
                           memory:
                             properties:
+                              hotplugMethod:
+                                default: Acpi
+                                description: HotplugMethod selects how hot-plugged
+                                  memory is exposed to the guest.
+                                enum:
+                                - Acpi
+                                - VirtioMem
+                                type: string
+                              hotplugSize:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  HotplugSize reserves additional memory on top of Size that can be
+                                  hot-plugged into the running VM without a restart. The pod's memory
+                                  limit is sized to Size+HotplugSize so the cgroup has headroom for a
+                                  future memory hotplug.
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
                               hugepages:
                                 properties:
                                   pageSize:
@@ -1270,6 +1320,13 @@ spec:
                           grpc:
                             description: GRPC specifies a GRPC HealthCheckRequest.
                             properties:
+                              mode:
+                                description: |-
+                                  mode specifies the connection mode for the gRPC health probe.
+                                  Set to "TLS" to use TLS without certificate verification.
+                                  Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                  If not specified, the probe uses a plaintext (insecure) connection.
+                                type: string
                               port:
                                 description: Port number of the gRPC service. Number
                                   must be in the range 1 to 65535.
@@ -1328,6 +1385,11 @@ spec:
                                   Number must be in the range 1 to 65535.
                                   Name must be an IANA_SVC_NAME.
                                 x-kubernetes-int-or-string: true
+                              protocol:
+                                description: |-
+                                  Protocol selects the wire protocol for the probe connection.
+                                  Nil defaults to HTTP/1.1.
+                                type: string
                               scheme:
                                 description: |-
                                   Scheme to use for connecting to the host.
@@ -1450,6 +1512,13 @@ spec:
                           grpc:
                             description: GRPC specifies a GRPC HealthCheckRequest.
                             properties:
+                              mode:
+                                description: |-
+                                  mode specifies the connection mode for the gRPC health probe.
+                                  Set to "TLS" to use TLS without certificate verification.
+                                  Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                  If not specified, the probe uses a plaintext (insecure) connection.
+                                type: string
                               port:
                                 description: Port number of the gRPC service. Number
                                   must be in the range 1 to 65535.
@@ -1508,6 +1577,11 @@ spec:
                                   Number must be in the range 1 to 65535.
                                   Name must be an IANA_SVC_NAME.
                                 x-kubernetes-int-or-string: true
+                              protocol:
+                                description: |-
+                                  Protocol selects the wire protocol for the probe connection.
+                                  Nil defaults to HTTP/1.1.
+                                type: string
                               scheme:
                                 description: |-
                                   Scheme to use for connecting to the host.
@@ -1585,7 +1659,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -1657,9 +1731,10 @@ spec:
                             operator:
                               description: |-
                                 Operator represents a key's relationship to the value.
-                                Valid operators are Exists and Equal. Defaults to Equal.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                 Exists is equivalent to wildcard for value, so that a pod can
                                 tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                               type: string
                             tolerationSeconds:
                               description: |-
