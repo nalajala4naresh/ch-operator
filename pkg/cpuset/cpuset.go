@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	runc_cgroups "github.com/opencontainers/runc/libcontainer/cgroups"
+	runc_cgroups "github.com/opencontainers/cgroups"
 )
 
 type CPUSet map[int]struct{}

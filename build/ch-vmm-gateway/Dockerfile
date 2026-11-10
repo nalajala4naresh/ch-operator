@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.11-alpine AS builder
 
 ARG GITHUB_TOKEN
 WORKDIR /workspace

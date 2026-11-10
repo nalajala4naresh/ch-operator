@@ -8,20 +8,19 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/cgroups"
 
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/pid"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 )
 
 type Manager interface {
-	Set(ctx context.Context, vm *v1beta1.VirtualMachine, r *configs.Resources) error
+	Set(ctx context.Context, vm *v1beta1.VirtualMachine, r *cgroups.Resources) error
 }
 
 func NewManager(ctx context.Context, vm *v1beta1.VirtualMachine) (Manager, error) {
-	cg := &configs.Cgroup{
-		Resources: &configs.Resources{},
+	cg := &cgroups.Cgroup{
+		Resources: &cgroups.Resources{},
 	}
 
 	socketPath := filepath.Join("/var/lib/kubelet/pods", string(vm.Status.VMPodUID), "volumes/kubernetes.io~empty-dir/virtink/", "vm.sock")

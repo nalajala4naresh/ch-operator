@@ -11,9 +11,8 @@ import (
 	"strings"
 
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"github.com/opencontainers/runc/libcontainer/cgroups/fs2"
-	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/cgroups"
+	"github.com/opencontainers/cgroups/fs2"
 	"github.com/opencontainers/runc/libcontainer/devices"
 )
 
@@ -23,7 +22,7 @@ type v2Manager struct {
 	pid        int
 }
 
-func newV2Manager(cg *configs.Cgroup, cgroupPath string, pid int) (Manager, error) {
+func newV2Manager(cg *cgroups.Cgroup, cgroupPath string, pid int) (Manager, error) {
 	cgroupManager, err := fs2.NewManager(cg, cgroupPath)
 	if err != nil {
 		return nil, err
@@ -35,7 +34,7 @@ func newV2Manager(cg *configs.Cgroup, cgroupPath string, pid int) (Manager, erro
 	}, nil
 }
 
-func (m *v2Manager) Set(ctx context.Context, vm *v1beta1.VirtualMachine, r *configs.Resources) error {
+func (m *v2Manager) Set(ctx context.Context, vm *v1beta1.VirtualMachine, r *cgroups.Resources) error {
 	resources := *r
 
 	deviceRules, err := m.generateDeviceRuleForVM(ctx, vm)

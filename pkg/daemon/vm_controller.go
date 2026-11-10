@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/moby/sys/mountinfo"
-	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/cgroups"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
@@ -753,7 +753,7 @@ func (r *VMReconciler) mountBlockVolume(ctx context.Context, vm *v1beta1.Virtual
 	if cgroupManager == nil {
 		return fmt.Errorf("set cgroup for volume device %s: VM socket not found", volume)
 	}
-	if err := cgroupManager.Set(ctx, vm, &configs.Resources{
+	if err := cgroupManager.Set(ctx, vm, &cgroups.Resources{
 		Devices: []*devices.Rule{{
 			Type:        devices.BlockDevice,
 			Major:       major,
@@ -890,7 +890,7 @@ func (r *VMReconciler) umountHotplugVolume(ctx context.Context, vm *v1beta1.Virt
 			return err
 		}
 		if cgroupManager != nil {
-			if err := cgroupManager.Set(ctx, vm, &configs.Resources{
+			if err := cgroupManager.Set(ctx, vm, &cgroups.Resources{
 				Devices: []*devices.Rule{{
 					Type:        devices.BlockDevice,
 					Major:       major,
