@@ -32,6 +32,6 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -p `n
 
 
 
-FROM alpine
+FROM alpine:3.24.4
 COPY --from=builder /workspace/main /usr/bin/ch-vmm-daemon
 ENTRYPOINT ["ch-vmm-daemon"]
