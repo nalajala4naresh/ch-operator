@@ -114,7 +114,7 @@ At this time, `bridge` mode doesn't support additional configuration fields.
 
 ### `masquerade` Mode
 
-In `masquerade` mode, virtmanager allocates internal IP addresses to VMs and hides them behind NAT. All the traffic exiting VMs is "NAT'ed" using pod IP addresses. A guest operating system should be configured to use DHCP to acquire IPv4 addresses. Currently all ports are forwarded into the VM.
+In `masquerade` mode, ch-operator allocates internal IP addresses to VMs and hides them behind NAT. All the traffic exiting VMs is "NAT'ed" using pod IP addresses. A guest operating system should be configured to use DHCP to acquire IPv4 addresses. Currently all ports are forwarded into the VM.
 
 ```yaml
 apiVersion: cloudhypervisor.quill.today/v1beta1
@@ -137,13 +137,13 @@ spec:
 
 In `sriov` mode, VMs are directly exposed to an SR-IOV PCI device, usually allocated by [SR-IOV Network Device Plugin](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin). The device is passed through into the guest operating system as a host device, using the [VFIO](https://www.kernel.org/doc/html/latest/driver-api/vfio.html#:~:text=The%20VFIO%20driver%20is%20an,non%2Dprivileged%2C%20userspace%20drivers.) userspace interface, to maintain high networking performance.
 
-#### How to Expose SR-IOV VFs to virtmanager
+#### How to Expose SR-IOV VFs to ch-operator
 
 First you should have [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni), [SR-IOV CNI](https://github.com/k8snetworkplumbingwg/sriov-cni) and [SR-IOV Network Device Plugin](https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin) installed across the cluster. For their installation and usage refer to the respective project documentation.
 
 Then you should create some VFs on the host's SR-IOV capable device. Please consult the vendor of your device for how to do so.
 
-To expose SR-IOV VFs to virtmanager, each VF's driver should be changed to `vfio-pci`. Below is an example of how to do so:
+To expose SR-IOV VFs to ch-operator, each VF's driver should be changed to `vfio-pci`. Below is an example of how to do so:
 
 ```bash
 export VF_ADDR=0000:58:01.2 # change it to your VF's PCI address
@@ -206,7 +206,7 @@ spec:
 EOF
 ```
 
-This will make the VF a `multus` network for virtmanager to use.
+This will make the VF a `multus` network for ch-operator to use.
 
 #### Start an SR-IOV VM
 

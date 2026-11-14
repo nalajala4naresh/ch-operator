@@ -8,6 +8,7 @@ spec:
   selector:
     name: ch-vmm-daemon
   ports:
-    - protocol: TCP
-      port: 8443
-      targetPort: 8443
+    - name: vm-access
+      protocol: TCP
+      port: 8444
+      targetPort: vm-access

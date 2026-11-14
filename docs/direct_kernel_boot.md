@@ -1,6 +1,6 @@
 # Direct Kernel Boot
 
-virtmanager uses Cloud Hypervisor as the underlying hypervisor for VMs. Cloud Hypervisor supports direct kernel boot into a `vmlinux` ELF kernel. It should work with a rootfs from most distributions and does not require an EFI system partition. To use the direct kernel boot feature in virtmanager, both a kernel image and a rootfs volume are required.
+ch-operator uses Cloud Hypervisor as the underlying hypervisor for VMs. Cloud Hypervisor supports direct kernel boot into a `vmlinux` ELF kernel. It should work with a rootfs from most distributions and does not require an EFI system partition. To use the direct kernel boot feature in ch-operator, both a kernel image and a rootfs volume are required.
 
 ## Kernel Images
 
@@ -14,7 +14,7 @@ kind: VirtualMachine
 spec:
   instance:
     kernel:
-      image: nalajalanaresh/virtmanager-kernel-5.15.12
+      image: nalajalanaresh/ch-vmm-kernel:5.15
       cmdline: "console=ttyS0 root=/dev/vda rw"
     disks:
       - name: ubuntu
@@ -40,7 +40,7 @@ COPY vmlinux /vmlinux
 
 ## Rootfs Volumes
 
-The rootfs defines the root filesystem of the VM. The root parition from most distributions should work for direct kernel booting. However, virtmanager does provide a more effortless way to build and use a rootfs using Docker with the `containerRootfs` volume feature.
+The rootfs defines the root filesystem of the VM. The root partition from most distributions should work for direct kernel booting. However, ch-operator does provide a more effortless way to build and use a rootfs using Docker with the `containerRootfs` volume feature.
 
 ### `containerRootfs` Volume
 

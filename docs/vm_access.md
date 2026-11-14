@@ -79,4 +79,4 @@ kubectl create rolebinding alice-vm-access --clusterrole=ch-vmm-vm-access --user
   masquerade interfaces on the pod network. NetworkPolicies must allow traffic from the node.
 - `ch-vmm-gateway` and `ch-vmm-daemon` authenticate each other with certificates from the `ch-vmm-ca` issuer in
   `ch-vmm-system` (cert-manager).
-- The gRPC `VmService` and the `vmm` CLI are deprecated. They bypass RBAC and will be removed.
+- The `vmm` CLI and the daemon's gRPC `VmService` (port 8443), which bypassed RBAC, have been removed.

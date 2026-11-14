@@ -1,6 +1,6 @@
 # VM Vertical Scaling
 
-This document describes the VM vertical scaling feature in ch-vmm, which allows you to dynamically resize a running VirtualMachine's CPU and memory without downtime.
+This document describes the VM vertical scaling feature in ch-operator, which allows you to dynamically resize a running VirtualMachine's CPU and memory without downtime.
 
 ## Overview
 

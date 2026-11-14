@@ -87,7 +87,13 @@ var _ admission.Validator[*types.VirtualMachineMigration] = &VirtualMachineMigra
 func (v *VirtualMachineMigrationCustomValidator) ValidateCreate(ctx context.Context, virtualmachinemigration *types.VirtualMachineMigration) (admission.Warnings, error) {
 	virtualmachinemigrationlog.Info("Validation for VirtualMachineMigration upon creation", "name", virtualmachinemigration.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
+	if errs := ValidateVMM(ctx, virtualmachinemigration); len(errs) > 0 {
+		return nil, apierrors.NewInvalid(
+			types.GroupVersion.WithKind("VirtualMachineMigration").GroupKind(),
+			virtualmachinemigration.Name,
+			errs,
+		)
+	}
 
 	return nil, nil
 }
@@ -111,7 +117,10 @@ func (v *VirtualMachineMigrationCustomValidator) ValidateDelete(ctx context.Cont
 	return nil, nil
 }
 
-func ValidateVMM(ctx context.Context, vmm *types.VirtualMachineMigration, oldVMM *types.VirtualMachineMigration) field.ErrorList {
+// ValidateVMM validates a VirtualMachineMigration on creation: it must name an existing VM in the
+// same namespace whose Migratable condition is true. It is not applied on update, because the VM
+// stops being migratable while the migration itself is in progress.
+func ValidateVMM(ctx context.Context, vmm *types.VirtualMachineMigration) field.ErrorList {
 	var errs field.ErrorList
 	errs = append(errs, ValidateVMMSpec(ctx, vmm.Namespace, &vmm.Spec, field.NewPath("spec"))...)
 	return errs

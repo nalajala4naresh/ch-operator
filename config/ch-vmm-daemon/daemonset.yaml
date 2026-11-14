@@ -35,8 +35,6 @@ spec:
               containerPort: 8444
               protocol: TCP
           volumeMounts:
-            - name: daemon-config
-              mountPath: /config
             - name: kubelet-pods
               mountPath: /pods
               mountPropagation: Bidirectional
@@ -59,9 +57,6 @@ spec:
           secret:
             secretName: ch-vmm-daemon-cert
             defaultMode: 420
-        - name: daemon-config 
-          configMap:
-            name: daemon-config
         - name: device-plugins
           hostPath:
             path: /var/lib/kubelet/device-plugins
