@@ -91,7 +91,7 @@ jobs:
           chmod +x /tmp/skaffold
           /tmp/skaffold render --default-repo=nalajalanaresh --offline=true -t $GITHUB_REF_NAME > ch-operator.yaml
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
