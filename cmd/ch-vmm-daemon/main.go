@@ -1,14 +1,9 @@
 package main
 
 import (
-	"context"
-
 	"flag"
 	"fmt"
 	"os"
-
-	grpc "github.com/nalajala4naresh/ch-operator/pkg/grpcutil"
-	grpc_util "github.com/nalajala4naresh/ch-operator/pkg/grpcutil"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,11 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/nalajala4naresh/ch-operator/pkg/config"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/access"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/deviceplugin"
-	daemon_proto "github.com/nalajala4naresh/ch-operator/pkg/daemon/proto"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/tcpproxy"
 	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
@@ -124,35 +117,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting grpc server")
-
-	err = config.Setup("daemon-conf")
-	if err != nil {
-		panic(fmt.Sprintf("unable to get config %s", err))
+	setupLog.Info("starting manager")
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		setupLog.Error(err, "problem running manager")
+		os.Exit(1)
 	}
-	gconfig, err := config.Get()
-	if err != nil {
-		panic(fmt.Sprintf("unable to get config %s", err))
-	}
-
-	go func() {
-		setupLog.Info("starting manager")
-		if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-			setupLog.Error(err, "problem running manager")
-			os.Exit(1)
-		}
-	}()
-
-	//add options for grpc port , tls config and other config options
-	server, err := grpc_util.NewServer(grpc_util.WithContext(context.Background()),
-		grpc.WithGrpcPort(gconfig.GRPCPort),
-		grpc.WithTLSConfig(gconfig.TLSConfig))
-	if err != nil {
-		panic(fmt.Sprintf("unable to start grpc server %s", err))
-	}
-	vmm := daemon.NewServer(mgr.GetClient())
-	daemon_proto.RegisterVmServiceServer(server.GRPCServer, vmm)
-	defer server.Shutdown()
-	server.Run()
-
 }

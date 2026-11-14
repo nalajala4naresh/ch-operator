@@ -1,6 +1,6 @@
 # Dedicated CPU Placement
 
-Some workloads require stronger guarantees in terms of latency and/or performance in order to operate acceptably. virtmanager, relying on the Kubernetes CPU manager, is able to pin guest's vCPUs to the host's pCPUs.
+Some workloads require stronger guarantees in terms of latency and/or performance in order to operate acceptably. ch-operator, relying on the Kubernetes CPU manager, is able to pin guest's vCPUs to the host's pCPUs.
 
 ## Kubernetes CPU Manager
 

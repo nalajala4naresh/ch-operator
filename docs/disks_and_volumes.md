@@ -6,7 +6,7 @@ Making persistent storage in the cluster (volumes) accessible to VMs consists of
 
 VM disks are configured in `spec.instance.disks`. At this time, a disk only has two properties: a required and unique `name` that matches a volume name in `spec.volumes`, and an optional `readonly` field to specify whether this disk should be readonly to the VM.
 
-CD-ROMs or floppy disks are not supported by virtmanager.
+CD-ROMs or floppy disks are not supported by ch-operator.
 
 ## Volumes
 
@@ -76,7 +76,7 @@ The `containerRootfs` feature provides the ability to store and distribute VM ro
 
 Unlike `containerDisk`s, which require using of a raw or QCOW2 image. A `containerRootfs` volume can be built solely with Docker or other container image building tools. The rootfs on the container image will be used directly as the VM's rootfs, with no further requirements of disk partitions or file system formatting.
 
-However, since normally a `containerRootfs` is not bootable itself, it's mostly used with virtmanager's [direct kernel boot](direct_kernel_boot.md) feature. Below is an example that directly boots a VM with a given kernel and a `containerRootfs` disk:
+However, since normally a `containerRootfs` is not bootable itself, it's mostly used with ch-operator's [direct kernel boot](direct_kernel_boot.md) feature. Below is an example that directly boots a VM with a given kernel and a `containerRootfs` disk:
 
 ```yaml
 apiVersion: cloudhypervisor.quill.today/v1beta1
@@ -84,7 +84,7 @@ kind: VirtualMachine
 spec:
   instance:
     kernel:
-      image: nalajalanaresh/virtmanager-kernel-5.15.12
+      image: nalajalanaresh/ch-vmm-kernel:5.15
       cmdline: "console=ttyS0 root=/dev/vda rw"
     disks:
       - name: ubuntu
@@ -126,7 +126,7 @@ A `persistentVolumeClaim` volume allows connecting a PVC to a VM disk. Use a `pe
 
 A PV can be in `Filesystem` or `Block` mode:
 
-- `Filesystem` mode: For virtmanager to be able to consume the disk present on a PV's filesystem, the disk must be named `disk.img` and be placed in the root path of the filesystem. Currently the disk is also required to be in raw format.
+- `Filesystem` mode: For ch-operator to be able to consume the disk present on a PV's filesystem, the disk must be named `disk.img` and be placed in the root path of the filesystem. Currently the disk is also required to be in raw format.
 - `Block` mode: Use a block volume for consuming raw block devices.
 
 A simple example which attaches a PVC as a disk may look like this:
@@ -146,7 +146,7 @@ spec:
 
 ### `dataVolume` Volume
 
-A DataVolume is a custom resource provided by the [Containerized Data Importer (CDI) project](https://github.com/kubevirt/containerized-data-importer). virtmanager integrates with CDI in order to provide users a workflow for dynamically creating PVCs and importing data into those PVCs. Without using a DataVolume, users have to prepare a PVC with a disk image before assigning it to a VM manifest. With a DataVolume, both the PVC creation and import is automated on behalf of the user.
+A DataVolume is a custom resource provided by the [Containerized Data Importer (CDI) project](https://github.com/kubevirt/containerized-data-importer). ch-operator integrates with CDI in order to provide users a workflow for dynamically creating PVCs and importing data into those PVCs. Without using a DataVolume, users have to prepare a PVC with a disk image before assigning it to a VM manifest. With a DataVolume, both the PVC creation and import is automated on behalf of the user.
 
 ### Enabling DataVolume Support
 
@@ -154,7 +154,7 @@ In order to take advantage of the `dataVolume` volume source on a VM, CDI must b
 
 ### Creating a VM with `dataVolume` Disk
 
-Below is an example of a DataVolume being referenced by a VM. It is okay to post the VM manifest to the cluster before the DataVolume is created or while the DataVolume is still having data imported. virtmanager knows not to start the VM until all referenced DataVolumes have finished their clone and import phases.
+Below is an example of a DataVolume being referenced by a VM. It is okay to post the VM manifest to the cluster before the DataVolume is created or while the DataVolume is still having data imported. ch-operator knows not to start the VM until all referenced DataVolumes have finished their clone and import phases.
 
 ```yaml
 apiVersion: cloudhypervisor.quill.today/v1beta1

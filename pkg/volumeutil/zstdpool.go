@@ -24,11 +24,6 @@ var decoderPool *sync.Pool
 var errDecoderPoolFail = errors.New("failed to get decoder from pool")
 var errEncoderPoolFail = errors.New("failed to get encoder from pool")
 
-var zstdFastestLevel = zstd.WithEncoderLevel(zstd.SpeedFastest)
-
-var encoder, _ = zstd.NewWriter(nil, zstdFastestLevel) // TODO: raise WithEncoderConcurrency ?
-var decoder, _ = zstd.NewReader(nil)
-
 func init() {
 
 	onceDecPool.Do(func() {
@@ -76,14 +71,6 @@ func (Zstd) GetEncoder(out io.WriteCloser) (*zstdEncoderWrapper, error) {
 	}
 	enc.Reset(out)
 	return &zstdEncoderWrapper{enc}, nil
-}
-
-func (Zstd) DecodeAll(in []byte) ([]byte, error) {
-	return decoder.DecodeAll(in, nil)
-}
-
-func (Zstd) EncodeAll(in []byte) []byte {
-	return encoder.EncodeAll(in, nil)
 }
 
 func CreateArchive(destination string, files []string) error {

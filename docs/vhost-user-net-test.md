@@ -1,6 +1,6 @@
 # Vhost-user Network Test
 
-The purpose of this document is to do a performance test for vhost-user, bridge and masquerade network interface of VM. We choose Userspace CNI to configure underlay network with TSO support for better vhost-user TCP bandwidth, refer to document [Vhost-user Network](./vhost-user-net.md) to setup and use vhost-user network in Virtink.
+The purpose of this document is to do a performance test for vhost-user, bridge and masquerade network interface of VM. We choose Userspace CNI to configure underlay network with TSO support for better vhost-user TCP bandwidth, refer to document [Vhost-user Network](./vhost-user-net.md) to setup and use vhost-user network in ch-operator.
 
 The test includes:
 
