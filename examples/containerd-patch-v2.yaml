@@ -1,0 +1,164 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: containerd-patch
+  namespace: ch-vmm-system
+  labels:
+    app: containerd-patch
+spec:
+  selector:
+    matchLabels:
+      app: containerd-patch
+  template:
+    metadata:
+      labels:
+        app: containerd-patch
+    spec:
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: patch
+          image: alpine:3.20
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+
+              CONFIG_PATH="/etc/containerd/config.toml"
+              CONFIG="/host${CONFIG_PATH}"
+              KEY="device_ownership_from_security_context"
+              Q="[\"']"   # matches ' or " in TOML table headers
+              LOG="[containerd-patch][${NODE_NAME}]"
+
+              # Run a command on the host (COS keeps crictl in /home/kubernetes/bin)
+              host() {
+                chroot /host /usr/bin/env \
+                  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/kubernetes/bin "$@"
+              }
+
+              # True when the *running* containerd reports the flag as enabled
+              flag_active() {
+                host crictl info 2>/dev/null | grep -iE "deviceownership|${KEY}" | grep -q true
+              }
+
+              # True when the config file on disk parses and resolves the flag to true.
+              # `config dump` also applies version migration and imports, so this works
+              # for any config version containerd accepts.
+              config_valid() {
+                host containerd --config "${CONFIG_PATH}" config dump 2>/dev/null \
+                  | grep -Eq "^[[:space:]]*${KEY}[[:space:]]*=[[:space:]]*true"
+              }
+
+              idle() {
+                echo "${LOG} Entering idle loop."
+                while true; do sleep 3600; done
+              }
+
+              if [ ! -f "${CONFIG}" ]; then
+                echo "${LOG} ERROR: config.toml not found at ${CONFIG}"
+                exit 1
+              fi
+
+              # Idempotent: if containerd already reports the flag, don't touch anything
+              if flag_active; then
+                echo "${LOG} Flag already active in running containerd, nothing to do."
+                idle
+              fi
+
+              echo "${LOG} $(host containerd --version 2>/dev/null || echo 'containerd version unknown')"
+              CONFIG_VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' "${CONFIG}" | head -n 1)"
+              echo "${LOG} config version: ${CONFIG_VERSION:-none}"
+
+              BACKUP="${CONFIG}.bak.$(date +%s)"
+              cp -p "${CONFIG}" "${BACKUP}"
+
+              # Config version >= 3 (containerd 2.x) keeps the option in the
+              # io.containerd.cri.v1.runtime plugin; version 2 (containerd 1.x, still
+              # accepted and migrated by 2.x) keeps it in io.containerd.grpc.v1.cri.
+              # Version >= 3 configs also have a grpc.v1.cri table, but it is a different
+              # plugin there, so never fall back to it.
+              # Headers may be indented and use either quote style.
+              if [ "${CONFIG_VERSION:-0}" -ge 3 ]; then
+                TABLE="[plugins.'io.containerd.cri.v1.runtime']"
+                HDR="^[[:space:]]*\[plugins\.${Q}io\.containerd\.cri\.v1\.runtime${Q}\][[:space:]]*(#.*)?$"
+              elif [ "${CONFIG_VERSION:-0}" -eq 2 ]; then
+                TABLE='[plugins."io.containerd.grpc.v1.cri"]'
+                HDR="^[[:space:]]*\[plugins\.${Q}io\.containerd\.grpc\.v1\.cri${Q}\][[:space:]]*(#.*)?$"
+              else
+                echo "${LOG} ERROR: unsupported config version '${CONFIG_VERSION:-none}', not touching config."
+                rm -f "${BACKUP}"
+                idle
+              fi
+
+              # Remove every existing occurrence, including stray lines from earlier runs
+              sed -i -E "/^[[:space:]]*${KEY}[[:space:]]*=/d" "${CONFIG}"
+
+              if grep -Eq "${HDR}" "${CONFIG}"; then
+                echo "${LOG} Adding ${KEY} to existing table ${TABLE}"
+                # Insert right after the header, keeping its indentation. The regex is
+                # passed through the environment because `awk -v` would mangle backslashes.
+                HDR="${HDR}" LINE="${KEY} = true" awk '
+                  { print }
+                  !done && $0 ~ ENVIRON["HDR"] {
+                    match($0, /^[[:space:]]*/)
+                    printf "%s  %s\n", substr($0, 1, RLENGTH), ENVIRON["LINE"]
+                    done = 1
+                  }' "${CONFIG}" > "${CONFIG}.new"
+                cat "${CONFIG}.new" > "${CONFIG}"   # keep owner/mode of the original
+                rm -f "${CONFIG}.new"
+              else
+                echo "${LOG} Appending new table ${TABLE}"
+                printf '\n%s\n  %s = true\n' "${TABLE}" "${KEY}" >> "${CONFIG}"
+              fi
+
+              echo "${LOG} Patched section:"
+              grep -nE "cri\.v1\.runtime${Q}\]|grpc\.v1\.cri${Q}\]|${KEY}" "${CONFIG}" || true
+
+              # Never restart containerd on a config it cannot load
+              if ! config_valid; then
+                echo "${LOG} ERROR: patched config rejected by containerd, restoring backup:"
+                host containerd --config "${CONFIG_PATH}" config dump 2>&1 | tail -n 5 || true
+                cat "${BACKUP}" > "${CONFIG}"
+                idle
+              fi
+
+              echo "${LOG} Restarting containerd..."
+              host systemctl restart containerd
+
+              # Wait for containerd to come back and confirm the flag is live
+              i=0
+              while [ $i -lt 30 ]; do
+                if flag_active; then
+                  echo "${LOG} Verified: ${KEY} is active."
+                  idle
+                fi
+                i=$((i + 1))
+                sleep 2
+              done
+
+              echo "${LOG} ERROR: flag not reported by crictl after restart."
+              echo "${LOG} containerd status:"
+              host systemctl status containerd --no-pager | tail -n 20 || true
+              if ! host systemctl is-active --quiet containerd; then
+                echo "${LOG} containerd is not running, restoring backup and restarting"
+                cat "${BACKUP}" > "${CONFIG}"
+                host systemctl restart containerd || true
+              fi
+              # Stay up instead of crash-looping (which would restart containerd repeatedly)
+              idle
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: host
+              mountPath: /host
+      volumes:
+        - name: host
+          hostPath:
+            path: /
