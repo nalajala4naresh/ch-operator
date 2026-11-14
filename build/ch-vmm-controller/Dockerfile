@@ -29,7 +29,7 @@ COPY pkg/ pkg/
 COPY internal/ internal/
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -p `nproc` -a cmd/ch-vmm-controller/main.go
 
-FROM alpine
+FROM alpine:3.24.4
 
 ARG PRERUNNER_CH_IMAGE
 ENV PRERUNNER_CH_IMAGE=$PRERUNNER_CH_IMAGE
