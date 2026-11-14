@@ -4,6 +4,9 @@ metadata:
   name: ch-vmm-daemon-cert
   namespace: ch-vmm-system
 spec:
+  # Daemons use this certificate as a server (ch-vmm-gateway access, migration target) and as a
+  # client (migration source). The migration target only accepts this common name.
+  commonName: ch-vmm-daemon
   dnsNames:
     - "ch-vmm-daemon.ch-vmm-system.svc"
     - "ch-vmm-daemon.ch-vmm-system.svc.cluster.local"
@@ -11,6 +14,7 @@ spec:
     - "*.ch-vmm-daemon.ch-vmm-system.svc.cluster.local"
   usages:
     - server auth
+    - client auth
     - digital signature
     - key encipherment
   issuerRef:

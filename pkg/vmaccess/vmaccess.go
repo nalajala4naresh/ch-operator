@@ -14,6 +14,12 @@ import (
 const (
 	// DaemonAccessPort is where ch-vmm-daemon serves streaming endpoints to ch-vmm-gateway (mTLS).
 	DaemonAccessPort = 8444
+	// DaemonServerName is the DNS name in the shared ch-vmm-daemon certificate. Peers dial a daemon
+	// by node IP and verify its certificate against this name.
+	DaemonServerName = "ch-vmm-daemon.ch-vmm-system.svc"
+	// DaemonCommonName is the common name of the ch-vmm-daemon certificate. A migration target only
+	// accepts client certificates with this name.
+	DaemonCommonName = "ch-vmm-daemon"
 	// UserHeader carries the end user's name from ch-vmm-gateway to the daemon, for logging only.
 	UserHeader = "X-Ch-Vmm-User"
 

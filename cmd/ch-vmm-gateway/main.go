@@ -36,7 +36,7 @@ func run() error {
 	var (
 		daemonNamespace  = "ch-vmm-system"
 		daemonSelector   = "name=ch-vmm-daemon"
-		daemonServerName = "ch-vmm-daemon.ch-vmm-system.svc"
+		daemonServerName = vmaccess.DaemonServerName
 		daemonPort       = vmaccess.DaemonAccessPort
 		clientCertDir    = "/var/lib/ch-vmm-gateway/client-cert"
 	)
