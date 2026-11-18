@@ -31,7 +31,7 @@ import (
 	"github.com/nalajala4naresh/ch-operator/pkg/cloudhypervisor"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/cgroup"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/pid"
-	"github.com/nalajala4naresh/ch-operator/pkg/tlsutil"
+	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
 	"github.com/nalajala4naresh/ch-operator/pkg/volumeutil"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 )
@@ -474,16 +474,11 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						}
 					}
 
-					clientCACertPool, err := tlsutil.LoadCACert(daemonCertDirPath)
+					// Only another daemon may send migration data: the client certificate must chain to
+					// ch-vmm-ca and carry the daemon's common name, so ch-vmm-gateway's certificate is refused.
+					tlsConfig, err := vmaccess.ServerTLSConfig(daemonCertDirPath, vmaccess.DaemonCommonName)
 					if err != nil {
-						return fmt.Errorf("load CA cert: %s", err)
-					}
-					tlsConfig := &tls.Config{
-						GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
-							return tlsutil.LoadCert(daemonCertDirPath)
-						},
-						ClientAuth: tls.RequireAndVerifyClientCert,
-						ClientCAs:  clientCACertPool,
+						return fmt.Errorf("load migration server TLS config: %s", err)
 					}
 
 					port, err := r.RelayTCPToSocket(ctx, "0.0.0.0:0", tlsConfig, receiveMigrationSocketPath)
@@ -504,11 +499,11 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 					ctx, cancel := context.WithCancel(context.Background())
 					migrationControlBlock.SendMigrationCancelFunc = cancel
 
-					tlsConfig := &tls.Config{
-						InsecureSkipVerify: true,
-						GetClientCertificate: func(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-							return tlsutil.LoadCert(daemonCertDirPath)
-						},
+					// Verify the target before streaming guest memory to it. The target is dialed by node IP,
+					// so the certificate is checked against the daemon's service name, not the address.
+					tlsConfig, err := vmaccess.ClientTLSConfig(daemonCertDirPath, vmaccess.DaemonServerName)
+					if err != nil {
+						return fmt.Errorf("load migration client TLS config: %s", err)
 					}
 					if err := r.RelaySocketToTCP(ctx, filepath.Join(getVMDataDirPath(vm), "tx.sock"), fmt.Sprintf("%s:%d", vm.Status.Migration.TargetNodeIP, vm.Status.Migration.TargetNodePort), tlsConfig); err != nil {
 						return fmt.Errorf("start source relay: %s", err)
