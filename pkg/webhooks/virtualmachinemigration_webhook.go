@@ -2,7 +2,6 @@ package webhooks
 
 import (
 	"context"
-	"os"
 
 	types "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -11,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -19,26 +17,11 @@ import (
 // nolint:unused
 // log is for logging in this package.
 var virtualmachinemigrationlog = logf.Log.WithName("virtualmachinemigration-resource")
-var c client.Client
-
-func init() {
-
-	cfg, err := config.GetConfig()
-	if err != nil {
-		os.Exit(1)
-	}
-	c, err = client.New(cfg, client.Options{})
-	if err != nil {
-		os.Exit(1)
-
-	}
-
-}
 
 // SetupVirtualMachineMigrationWebhookWithManager registers the webhook for VirtualMachineMigration in the manager.
 func SetupVirtualMachineMigrationWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &types.VirtualMachineMigration{}).
-		WithValidator(&VirtualMachineMigrationCustomValidator{}).
+		WithValidator(&VirtualMachineMigrationCustomValidator{Reader: mgr.GetAPIReader()}).
 		WithDefaulter(&VirtualMachineMigrationCustomDefaulter{}).
 		Complete()
 }
@@ -78,7 +61,9 @@ func (d *VirtualMachineMigrationCustomDefaulter) Default(ctx context.Context, vi
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type VirtualMachineMigrationCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
+	// Reader looks up the VM being migrated. It reads from the API server rather than the cache, so
+	// the VM's Migratable condition is current at admission time.
+	Reader client.Reader
 }
 
 var _ admission.Validator[*types.VirtualMachineMigration] = &VirtualMachineMigrationCustomValidator{}
@@ -87,7 +72,7 @@ var _ admission.Validator[*types.VirtualMachineMigration] = &VirtualMachineMigra
 func (v *VirtualMachineMigrationCustomValidator) ValidateCreate(ctx context.Context, virtualmachinemigration *types.VirtualMachineMigration) (admission.Warnings, error) {
 	virtualmachinemigrationlog.Info("Validation for VirtualMachineMigration upon creation", "name", virtualmachinemigration.GetName())
 
-	if errs := ValidateVMM(ctx, virtualmachinemigration); len(errs) > 0 {
+	if errs := v.validateVMM(ctx, virtualmachinemigration); len(errs) > 0 {
 		return nil, apierrors.NewInvalid(
 			types.GroupVersion.WithKind("VirtualMachineMigration").GroupKind(),
 			virtualmachinemigration.Name,
@@ -117,26 +102,26 @@ func (v *VirtualMachineMigrationCustomValidator) ValidateDelete(ctx context.Cont
 	return nil, nil
 }
 
-// ValidateVMM validates a VirtualMachineMigration on creation: it must name an existing VM in the
+// validateVMM validates a VirtualMachineMigration on creation: it must name an existing VM in the
 // same namespace whose Migratable condition is true. It is not applied on update, because the VM
 // stops being migratable while the migration itself is in progress.
-func ValidateVMM(ctx context.Context, vmm *types.VirtualMachineMigration) field.ErrorList {
+func (v *VirtualMachineMigrationCustomValidator) validateVMM(ctx context.Context, vmm *types.VirtualMachineMigration) field.ErrorList {
 	var errs field.ErrorList
-	errs = append(errs, ValidateVMMSpec(ctx, vmm.Namespace, &vmm.Spec, field.NewPath("spec"))...)
+	errs = append(errs, v.validateVMMSpec(ctx, vmm.Namespace, &vmm.Spec, field.NewPath("spec"))...)
 	return errs
 }
 
-func ValidateVMMSpec(ctx context.Context, namespace string, spec *types.VirtualMachineMigrationSpec, fieldPath *field.Path) field.ErrorList {
+func (v *VirtualMachineMigrationCustomValidator) validateVMMSpec(ctx context.Context, namespace string, spec *types.VirtualMachineMigrationSpec, fieldPath *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	if spec == nil {
 		errs = append(errs, field.Required(fieldPath, ""))
 		return errs
 	}
-	errs = append(errs, ValidateVMName(ctx, namespace, spec.VMName, fieldPath.Child("vmName"))...)
+	errs = append(errs, v.validateVMName(ctx, namespace, spec.VMName, fieldPath.Child("vmName"))...)
 	return errs
 }
 
-func ValidateVMName(ctx context.Context, namespace string, vmName string, fieldPath *field.Path) field.ErrorList {
+func (v *VirtualMachineMigrationCustomValidator) validateVMName(ctx context.Context, namespace string, vmName string, fieldPath *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	if vmName == "" {
 		errs = append(errs, field.Required(fieldPath, ""))
@@ -145,7 +130,7 @@ func ValidateVMName(ctx context.Context, namespace string, vmName string, fieldP
 
 	vmKey := client.ObjectKey{Namespace: namespace, Name: vmName}
 	var vm types.VirtualMachine
-	if err := c.Get(ctx, vmKey, &vm); err != nil {
+	if err := v.Reader.Get(ctx, vmKey, &vm); err != nil {
 		if apierrors.IsNotFound(err) {
 			errs = append(errs, field.NotFound(fieldPath, vmName))
 		} else {

@@ -1,7 +1,7 @@
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
-  name: "ubuntu-ch-noble2"
+  name: "ubuntu-ch-noble"
 spec:
   storage:
     resources:
