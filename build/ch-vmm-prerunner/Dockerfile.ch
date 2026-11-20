@@ -72,3 +72,6 @@ COPY build/ch-vmm-prerunner/iptables-wrapper /sbin/iptables-wrapper
 RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-wrapper 100
 
 ADD build/ch-vmm-prerunner/virt-init-volume.sh /usr/bin/virt-init-volume
+
+COPY build/ch-vmm-prerunner/vm-wait-stopped.sh /usr/bin/vm-wait-stopped
+RUN chmod +x /usr/bin/vm-wait-stopped

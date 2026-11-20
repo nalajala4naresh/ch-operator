@@ -1541,6 +1541,14 @@ spec:
                 type: object
               runPolicy:
                 type: string
+              terminationGracePeriodSeconds:
+                description: |-
+                  TerminationGracePeriodSeconds is how long the guest is given to shut down after it is
+                  asked to stop (an ACPI power-button press, repeated until it stops) before the VM is
+                  forcibly stopped. 0 stops the VM immediately. Defaults to 30 (DefaultGracePeriodSeconds).
+                format: int64
+                minimum: 0
+                type: integer
               tolerations:
                 items:
                   description: |-

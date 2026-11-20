@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/nalajala4naresh/ch-operator/pkg/vmshutdown"
 	"github.com/nalajala4naresh/ch-operator/pkg/volumeutil"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -179,6 +180,22 @@ func (r *VirtualMachineReconciler) gcVMPods(ctx context.Context, vm *v1beta1.Vir
 }
 
 func (r *VirtualMachineReconciler) reconcile(ctx context.Context, vm *v1beta1.VirtualMachine) error {
+
+	// Stop a running VM that is being deleted or set to Halted by deleting its pod. A
+	// migration in progress finishes first, and Halted also waits for a snapshot or resize.
+	if vmshutdown.IsActivePhase(vm.Status.Phase) && vm.Status.Migration == nil {
+		switch {
+		case vm.DeletionTimestamp != nil:
+			if err := r.stopVM(ctx, vm, "VM deleted"); err != nil {
+				return err
+			}
+		case vm.Spec.RunPolicy == v1beta1.RunPolicyHalted &&
+			(vm.Status.Phase == v1beta1.VirtualMachineRunning || vm.Status.Phase == v1beta1.VirtualMachinePaused):
+			if err := r.stopVM(ctx, vm, "runPolicy is Halted"); err != nil {
+				return err
+			}
+		}
+	}
 
 	// switch on the phase of the VM and take actions
 	switch vm.Status.Phase {
@@ -1125,23 +1142,35 @@ func getHotplugVolumes(vm *v1beta1.VirtualMachine, vmPod *corev1.Pod) []*v1beta1
 func (r *VirtualMachineReconciler) buildVMPod(ctx context.Context, vm *v1beta1.VirtualMachine) (*corev1.Pod, error) {
 
 	prerunner := r.PrerunnerImageName
+	podTerminationGracePeriod := int64(vmshutdown.PodTerminationGracePeriod(vm) / time.Second)
 	vmPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:      vm.Labels,
 			Annotations: vm.Annotations,
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy:    corev1.RestartPolicyNever,
-			NodeSelector:     vm.Spec.NodeSelector,
-			Tolerations:      vm.Spec.Tolerations,
-			Affinity:         vm.Spec.Affinity,
-			ImagePullSecrets: []corev1.LocalObjectReference{{Name: os.Getenv("REGISTRY_CREDS_SECRET")}},
+			RestartPolicy:                 corev1.RestartPolicyNever,
+			TerminationGracePeriodSeconds: &podTerminationGracePeriod,
+			NodeSelector:                  vm.Spec.NodeSelector,
+			Tolerations:                   vm.Spec.Tolerations,
+			Affinity:                      vm.Spec.Affinity,
+			ImagePullSecrets:              []corev1.LocalObjectReference{{Name: os.Getenv("REGISTRY_CREDS_SECRET")}},
 			Containers: []corev1.Container{{
 				Name:           "vm-manager",
 				Image:          prerunner,
 				Resources:      vm.Spec.Resources,
 				LivenessProbe:  vm.Spec.LivenessProbe,
 				ReadinessProbe: vm.Spec.ReadinessProbes,
+				// Deleting this pod is how a VM is stopped. The node daemon shuts the guest
+				// down; this hook only holds off the kubelet's SIGTERM, which s6 would pass
+				// straight to Cloud Hypervisor, until the VM has stopped.
+				Lifecycle: &corev1.Lifecycle{
+					PreStop: &corev1.LifecycleHandler{
+						Exec: &corev1.ExecAction{
+							Command: []string{"/usr/bin/vm-wait-stopped", strconv.FormatInt(int64(vmshutdown.PreStopWait(vm)/time.Second), 10)},
+						},
+					},
+				},
 				SecurityContext: &corev1.SecurityContext{
 					Capabilities: &corev1.Capabilities{
 						Add: []corev1.Capability{"SYS_ADMIN", "NET_ADMIN", "SYS_RESOURCE"},
@@ -1601,9 +1630,35 @@ func (r *VirtualMachineReconciler) deleteAllVMPods(ctx context.Context, vm *v1be
 		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
 	}
 
-	return true, nil
+	// Pods are still terminating; their guests may still be shutting down. Report done only
+	// once they are gone, so the VM (and the daemon's view of it) outlives the shutdown. The
+	// pod deletions requeue this VM through the pod watch.
+	return false, nil
 
 }
+
+// stopVM asks a running VM to stop by deleting its pod, the way KubeVirt stops a VM by
+// deleting its VMI's launcher pod. The node daemon sees the pod terminating and shuts the
+// guest down gracefully within the VM's terminationGracePeriodSeconds.
+func (r *VirtualMachineReconciler) stopVM(ctx context.Context, vm *v1beta1.VirtualMachine, reason string) error {
+	if vm.Status.VMPodName == "" {
+		return nil
+	}
+	var vmPod corev1.Pod
+	key := types.NamespacedName{Name: vm.Status.VMPodName, Namespace: vm.Namespace}
+	if err := r.Get(ctx, key, &vmPod); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if !metav1.IsControlledBy(&vmPod, vm) || vmPod.DeletionTimestamp != nil {
+		return nil
+	}
+	if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("delete VM Pod: %s", err)
+	}
+	r.Recorder.Eventf(vm, corev1.EventTypeNormal, "StoppingVM", "Stopping VM (%s): deleted VM Pod %q", reason, vmPod.Name)
+	return nil
+}
+
 func incrementContainerResource(container *corev1.Container, resourceName string) {
 	if container.Resources.Requests == nil {
 		container.Resources.Requests = corev1.ResourceList{}
