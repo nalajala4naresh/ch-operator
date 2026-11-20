@@ -21,7 +21,7 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.7.0
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/mostynb/zstdpool-syncpool v0.0.13
-	github.com/nalajala4naresh/chvmm-api v1.30.0
+	github.com/nalajala4naresh/chvmm-api v1.31.0
 	github.com/namsral/flag v1.7.4-pre
 	github.com/nasa9084/go-openapi v0.0.0-20240619113810-c62c58bb3428
 	github.com/onsi/ginkgo/v2 v2.33.1
@@ -47,6 +47,7 @@ require (
 	k8s.io/component-base v0.37.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubelet v0.37.1
+	k8s.io/utils v0.0.0-20260626114624-be93311217bd
 	kubevirt.io/containerized-data-importer-api v1.60.3
 	sigs.k8s.io/controller-runtime v0.25.2
 )
@@ -190,7 +191,6 @@ require (
 	k8s.io/kms v0.37.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	k8s.io/streaming v0.37.1 // indirect
-	k8s.io/utils v0.0.0-20260626114624-be93311217bd // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect

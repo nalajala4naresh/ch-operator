@@ -17,6 +17,7 @@ import (
 
 	netv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -29,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/nalajala4naresh/ch-operator/internal/controller"
+	"github.com/nalajala4naresh/ch-operator/pkg/evacuation"
 	"github.com/nalajala4naresh/ch-operator/pkg/webhooks"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 	// +kubebuilder:scaffold:imports
@@ -66,6 +68,17 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	var defaultEvictionStrategyName string
+	var maxEvacuationsPerNode, maxEvacuationsInCluster int
+	flag.StringVar(&defaultEvictionStrategyName, "default-eviction-strategy", string(v1beta1.EvictionStrategyNone),
+		"Eviction strategy for VMs that do not set spec.evictionStrategy: None, LiveMigrate or LiveMigrateIfPossible.")
+	flag.IntVar(&maxEvacuationsPerNode, "max-evacuations-per-node", 2,
+		"Maximum concurrent eviction-triggered live migrations off a single node (0 means unlimited).")
+	flag.IntVar(&maxEvacuationsInCluster, "max-evacuations-in-cluster", 5,
+		"Maximum concurrent eviction-triggered live migrations across the cluster (0 means unlimited).")
+	var daemonPodSelector string
+	flag.StringVar(&daemonPodSelector, "daemon-pod-selector", "name=ch-vmm-daemon",
+		"Label selector of the ch-vmm-daemon pods, whose eviction is refused while VMs on their node need them (empty disables).")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -73,6 +86,17 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	defaultEvictionStrategy, err := evacuation.ParseStrategy(defaultEvictionStrategyName)
+	if err != nil {
+		setupLog.Error(err, "invalid --default-eviction-strategy")
+		os.Exit(1)
+	}
+	daemonSelector, err := labels.Parse(daemonPodSelector)
+	if err != nil {
+		setupLog.Error(err, "invalid --daemon-pod-selector")
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -211,7 +235,19 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "VMMigration")
 		os.Exit(1)
 	}
+	if err = (&controller.EvacuationReconciler{
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		Recorder:     mgr.GetEventRecorderFor("ch-vmm-controller-evacuation"),
+		MaxPerNode:   maxEvacuationsPerNode,
+		MaxInCluster: maxEvacuationsInCluster,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Evacuation")
+		os.Exit(1)
+	}
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		webhooks.SetupPodEvictionWebhookWithManager(mgr, defaultEvictionStrategy, daemonSelector)
+
 		if err = webhooks.SetupVirtualMachineWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "VirtualMachine")
 			os.Exit(1)

@@ -208,6 +208,32 @@ kubectl ch restart $VM_NAME
 kubectl ch migrate $VM_NAME
 ```
 
+### Live Migration on Node Drain
+
+By default, evicting a VM pod (`kubectl drain`, cluster-autoscaler, descheduler) shuts the guest down gracefully. Set `spec.evictionStrategy` to live-migrate the VM off the node instead:
+
+```yaml
+spec:
+  evictionStrategy: LiveMigrate
+```
+
+| Strategy | Migratable VM | Non-migratable VM |
+|---|---|---|
+| `None` (default) | shut down | shut down |
+| `LiveMigrate` | live-migrated | eviction blocked; the drain waits |
+| `LiveMigrateIfPossible` | live-migrated | shut down |
+
+The eviction webhook refuses the eviction with `429 Too Many Requests`, which `kubectl drain` retries, and marks the VM with `status.evacuationNodeName`. The controller then creates a `VirtualMachineMigration` labelled `cloudhypervisor.quill.today/evacuation=true`, retrying failed ones with backoff. Once the VM runs elsewhere, the retried eviction succeeds and the drain completes.
+
+Controller flags:
+
+- `--default-eviction-strategy` (default `None`) applies to VMs that leave `evictionStrategy` unset.
+- `--max-evacuations-per-node` (default `2`) and `--max-evacuations-in-cluster` (default `5`) bound concurrent evacuation migrations; `0` means unlimited.
+
+The webhook also refuses to evict a `ch-vmm-daemon` pod while any VM runs on, or migrates to or from, its node, because the daemon carries the migration traffic and drives guest shutdown. `--daemon-pod-selector` (default `name=ch-vmm-daemon`) identifies those pods.
+
+Only the Eviction API is intercepted: deleting the pod directly, or kubelet node-pressure eviction, still shuts the VM down.
+
 ### VFIO GPU Passthrough
 
 ch-operator supports GPU passthrough to VMs using VFIO (Virtual Function I/O). This allows VMs to directly access physical GPU devices for high-performance workloads such as machine learning, graphics rendering, or GPU-accelerated computing.

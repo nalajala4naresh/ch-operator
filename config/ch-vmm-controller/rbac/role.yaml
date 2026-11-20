@@ -48,6 +48,7 @@ rules:
   resources:
   - virtualdisks
   - virtualdisksnapshots
+  - virtualmachinemigrations
   - virtualmachines
   - vmpools
   - vmrollbacks
@@ -88,16 +89,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - cloudhypervisor.quill.today
-  resources:
-  - virtualmachinemigrations
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - k8s.cni.cncf.io
   resources:
