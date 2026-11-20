@@ -965,6 +965,19 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  evictionStrategy:
+                    description: |-
+                      EvictionStrategy decides what happens when the VM pod is evicted through the
+                      Eviction API (node drain, cluster-autoscaler, descheduler). None shuts the guest
+                      down gracefully. LiveMigrate live-migrates the VM off the node and blocks the
+                      eviction while the VM is not migratable. LiveMigrateIfPossible live-migrates when
+                      the VM is migratable and otherwise shuts it down. When unset, the controller's
+                      cluster-wide default applies (None unless configured).
+                    enum:
+                    - None
+                    - LiveMigrate
+                    - LiveMigrateIfPossible
+                    type: string
                   instance:
                     properties:
                       cpu:

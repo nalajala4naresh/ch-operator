@@ -5,6 +5,8 @@ metadata:
   namespace: default
 spec:
   terminationGracePeriodSeconds: 60
+  # Live-migrate off the node on kubectl drain instead of shutting down.
+  evictionStrategy: LiveMigrate
   instance:
     kernel:
       image: nalajalanaresh/ch-kernel-x86:6.12
