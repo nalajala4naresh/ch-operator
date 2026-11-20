@@ -32,6 +32,7 @@ import (
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/cgroup"
 	"github.com/nalajala4naresh/ch-operator/pkg/daemon/pid"
 	"github.com/nalajala4naresh/ch-operator/pkg/vmaccess"
+	"github.com/nalajala4naresh/ch-operator/pkg/vmshutdown"
 	"github.com/nalajala4naresh/ch-operator/pkg/volumeutil"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
 )
@@ -51,6 +52,9 @@ type VMReconciler struct {
 
 	migrationControlBlocks map[types.UID]migrationControlBlock
 	mutex                  sync.Mutex
+
+	shutdownSignals shutdownSignals
+	now             func() time.Time // for tests; defaults to time.Now
 }
 
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -81,6 +85,10 @@ func (r *VMReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 		}
 	}
 
+	var requeue requeueAfter
+	if errors.As(rerr, &requeue) {
+		return ctrl.Result{RequeueAfter: time.Duration(requeue)}, nil
+	}
 	if rerr != nil {
 		return ctrl.Result{}, rerr
 	}
@@ -113,6 +121,12 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 		}
 		return r.reconcileDeletingVM(ctx, vm, vmPod)
 
+	}
+
+	// Deleting the VM pod is how a VM is asked to stop: node drain, eviction, the Halted run
+	// policy, or garbage collection.
+	if vmPod.DeletionTimestamp != nil {
+		return r.reconcileTerminatingVMPod(ctx, vm, vmPod)
 	}
 
 	//find if this a restore of VM
@@ -365,16 +379,13 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 			}
 
 			if vmInfo.State == "Running" || vmInfo.State == "Paused" {
-				if vm.Spec.RunPolicy == v1beta1.RunPolicyHalted {
-					// TODO: shutdown with graceful timeout
-					if err := getCloudHypervisorClient(vm).VmShutdown(ctx); err != nil {
-
-						r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMPowerOff", "Failed to powered off VM")
-						return fmt.Errorf("power off VM: %s", err)
-					}
-				} else if vm.Status.PowerAction != "" {
+				// The Halted run policy is handled by the controller, which deletes the VM pod;
+				// the graceful shutdown then runs in reconcileTerminatingVMPod.
+				if vm.Status.PowerAction != "" {
 					switch vm.Status.PowerAction {
 					case v1beta1.VirtualMachinePowerOff:
+						// A soft request to the guest with no deadline. To stop a VM with a
+						// deadline, set runPolicy to Halted or delete the VM.
 						if err := getCloudHypervisorClient(vm).VmPowerButton(ctx); err != nil {
 							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMPowerOff", "Failed to powered off VM")
 						} else {
@@ -1094,17 +1105,23 @@ func (r *VMReconciler) cleanup(ctx context.Context, vm *v1beta1.VirtualMachine) 
 
 func (r *VMReconciler) reconcileDeletingVM(ctx context.Context, vm *v1beta1.VirtualMachine, vmPod *corev1.Pod) error {
 
-	if vmPod != nil && vmPod.Status.Phase == corev1.PodRunning && vmPod.DeletionTimestamp.IsZero() {
+	if vmPod != nil && vmPod.Status.Phase == corev1.PodRunning {
+		chClient := getCloudHypervisorClient(vm)
 
-		if err := getCloudHypervisorClient(vm).VmDelete(ctx); err != nil {
-			ctrl.Log.Info("daemon reconcling VM  and VM delete error ", "err", err.Error())
-			if !isChVMNotCreatedError(err) {
-				return err
-			}
-
+		// Shut the guest down gracefully first. The VM's finalizer holds the deletion until
+		// the VM has stopped.
+		stopped, err := r.stopGracefully(ctx, vm, vmPod, chClient)
+		if err != nil || !stopped {
+			return err
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMDeleted", "CloudHypervsior VM Deleted")
 
+		// The VM is already stopped, so a failure here only means Cloud Hypervisor has
+		// exited too.
+		if err := chClient.VmDelete(ctx); err != nil {
+			ctrl.Log.Info("VM delete after shutdown failed", "vm", vm.Name, "err", err.Error())
+		} else {
+			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMDeleted", "CloudHypervsior VM Deleted")
+		}
 	}
 	vm.Status.Phase = v1beta1.VirtualMachineSucceeded
 
@@ -1112,6 +1129,24 @@ func (r *VMReconciler) reconcileDeletingVM(ctx context.Context, vm *v1beta1.Virt
 		return err
 	}
 
+	return nil
+}
+
+// reconcileTerminatingVMPod shuts down the VM in a pod that is being deleted, while the VM
+// itself is kept. The pod's preStop hook keeps Cloud Hypervisor alive until this finishes.
+func (r *VMReconciler) reconcileTerminatingVMPod(ctx context.Context, vm *v1beta1.VirtualMachine, vmPod *corev1.Pod) error {
+	// During a migration the source pod is handled by the migration flow, and a VM that isn't
+	// running has nothing to shut down.
+	if vm.Status.NodeName != r.NodeName || vm.Status.Migration != nil ||
+		vmPod.Status.Phase != corev1.PodRunning || !vmshutdown.IsActivePhase(vm.Status.Phase) {
+		return nil
+	}
+
+	stopped, err := r.stopGracefully(ctx, vm, vmPod, getCloudHypervisorClient(vm))
+	if err != nil || !stopped {
+		return err
+	}
+	vm.Status.Phase = v1beta1.VirtualMachineSucceeded
 	return nil
 }
 
