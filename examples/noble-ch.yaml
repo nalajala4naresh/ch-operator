@@ -4,6 +4,7 @@ metadata:
   name: ubuntu-ch-noble
   namespace: default
 spec:
+  terminationGracePeriodSeconds: 60
   instance:
     kernel:
       image: nalajalanaresh/ch-kernel-x86:6.12

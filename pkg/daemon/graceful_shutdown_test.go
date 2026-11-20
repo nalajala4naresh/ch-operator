@@ -111,6 +111,40 @@ func TestStopGracefullyPressesUntilDeadlineThenForces(t *testing.T) {
 	}
 }
 
+func TestStopGracefullyRecordsGracefulShutdownOnce(t *testing.T) {
+	ctx := context.Background()
+	requested := time.Unix(1000, 0)
+	now := requested
+	r, rec := newTestReconciler(&now)
+	vm, pod := terminating(60, requested)
+	ch := &fakeCH{state: "Running"}
+
+	if _, err := r.stopGracefully(ctx, vm, pod, ch); err == nil {
+		t.Fatal("want requeue after first press")
+	}
+	drain(rec)
+
+	// The guest powers off 12s after the stop request.
+	now = requested.Add(12 * time.Second)
+	ch.state = "Shutdown"
+	if stopped, err := r.stopGracefully(ctx, vm, pod, ch); !stopped || err != nil {
+		t.Fatalf("stopped=%v err=%v; want stopped", stopped, err)
+	}
+	events := drain(rec)
+	if len(events) != 1 || !strings.Contains(events[0], "VMShutdown") || !strings.Contains(events[0], "after 12s") {
+		t.Fatalf("events = %q; want one VMShutdown after 12s", events)
+	}
+
+	// Later reconciles see the VM still stopped and stay quiet.
+	now = requested.Add(30 * time.Second)
+	if stopped, _ := r.stopGracefully(ctx, vm, pod, ch); !stopped {
+		t.Fatal("want stopped")
+	}
+	if events := drain(rec); len(events) != 0 {
+		t.Fatalf("events = %q; want none on repeat checks", events)
+	}
+}
+
 func TestStopGracefullyDeadlineSurvivesRestart(t *testing.T) {
 	// The start comes from the pod's deletion timestamp, so a fresh reconciler (a restarted
 	// daemon) that first sees the pod after the deadline stops the VM immediately.
@@ -141,13 +175,17 @@ func TestStopGracefullyAlreadyStopped(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r, _ := newTestReconciler(&now)
+			r, rec := newTestReconciler(&now)
 			vm, pod := terminating(30, requested)
 			if stopped, err := r.stopGracefully(context.Background(), vm, pod, tt.ch); !stopped || err != nil {
 				t.Fatalf("stopped=%v err=%v; want stopped", stopped, err)
 			}
 			if tt.ch.buttons != 0 || tt.ch.shutdowns != 0 {
 				t.Fatalf("buttons=%d shutdowns=%d; want no action", tt.ch.buttons, tt.ch.shutdowns)
+			}
+			// This daemon never signaled the shutdown, so there's nothing to report.
+			if events := drain(rec); len(events) != 0 {
+				t.Fatalf("events = %q; want none", events)
 			}
 		})
 	}
