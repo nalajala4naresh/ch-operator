@@ -7,9 +7,14 @@ Licensed under the MIT License. See LICENSE file in the project root for full li
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
+	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -17,12 +22,14 @@ import (
 
 	netv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -317,6 +324,29 @@ func main() {
 		// never routes eviction reviews to a replica that would refuse the connection.
 		if err := mgr.AddReadyzCheck("webhook", mgr.GetWebhookServer().StartedChecker()); err != nil {
 			setupLog.Error(err, "unable to set up webhook ready check")
+			os.Exit(1)
+		}
+
+		// Informers are created lazily. Controllers create theirs only on the leader, so a
+		// standby replica would build its Pod and VirtualMachine caches on the first
+		// eviction review, which then waits for a full LIST and can exceed the webhook
+		// timeout. Register them up front (this does not block before the manager starts)
+		// and report ready only once they have synced.
+		for _, obj := range []client.Object{&corev1.Pod{}, &v1beta1.VirtualMachine{}} {
+			if _, err := mgr.GetCache().GetInformer(context.Background(), obj); err != nil {
+				setupLog.Error(err, "unable to register informer for eviction webhook", "type", fmt.Sprintf("%T", obj))
+				os.Exit(1)
+			}
+		}
+		if err := mgr.AddReadyzCheck("cache-sync", func(req *http.Request) error {
+			ctx, cancel := context.WithTimeout(req.Context(), time.Second)
+			defer cancel()
+			if !mgr.GetCache().WaitForCacheSync(ctx) {
+				return errors.New("informer cache not synced")
+			}
+			return nil
+		}); err != nil {
+			setupLog.Error(err, "unable to set up cache sync ready check")
 			os.Exit(1)
 		}
 	}
