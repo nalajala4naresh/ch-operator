@@ -20,7 +20,11 @@ spec:
   selector:
     matchLabels:
       control-plane: controller-manager
-  replicas: 1
+  # Two replicas keep the pods/eviction webhook (failurePolicy: Fail) served while one
+  # replica is evicted or rolled; otherwise draining the controller's own node fails every
+  # other eviction. Leader election keeps a single active reconciler; every replica serves
+  # webhooks.
+  replicas: 2
   template:
     metadata:
       annotations:
@@ -28,6 +32,18 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      # Spread replicas across nodes so draining one node leaves a replica serving. This is
+      # preferred rather than required so a rolling update's surge pod can still schedule
+      # on small clusters.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  control-plane: controller-manager
       # TODO(user): Uncomment the following code to configure the nodeAffinity expression
       # according to the platforms which are supported by your solution.
       # It is considered best practice to support multiple architectures. You can

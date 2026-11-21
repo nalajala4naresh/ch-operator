@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: ch-vmm
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Keep one replica serving the pods/eviction webhook during drains, so evictions are
+  # never refused for lack of a webhook endpoint.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
