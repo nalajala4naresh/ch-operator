@@ -443,7 +443,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						}
 						return true, nil
 					}); err != nil {
-						r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate", "timeout for waiting cloud-hypervisor be running")
+						r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "PrepareMigrationTarget", "timeout for waiting cloud-hypervisor be running")
 						vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
 						return nil
 					}
@@ -480,7 +480,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						}
 
 						if err := wait.PollUntilContextTimeout(ctx, time.Second, 10*time.Second, true, condition.WithContext()); err != nil {
-							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate", "Failed to receive migration on %s: %s", vm.Status.Migration.TargetNodeName, err)
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "ReceiveMigration", "Failed to receive migration on %s: %s", vm.Status.Migration.TargetNodeName, err)
 							vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
 							return nil
 						}
@@ -545,7 +545,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						select {
 						case err := <-migrationControlBlock.SendMigrationErrCh:
 							if err != nil {
-								r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate", "Failed to migrate VM to %s: %s", vm.Status.Migration.TargetNodeName, err)
+								r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "SendMigration", "Failed to migrate VM to %s: %s", vm.Status.Migration.TargetNodeName, err)
 								vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
 							}
 						default:
@@ -565,7 +565,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 								if err := getCloudHypervisorClient(vm).VmCancelMigration(ctx); err != nil {
 									log.Error(err, "cancel migration")
 								}
-								r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate",
+								r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "CancelMigration",
 									"send-migration did not complete within %s; VM is still running on source node %s",
 									migrationRunningTimeout, r.NodeName)
 								vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
@@ -602,7 +602,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 							r.migrationControlBlocks[vm.UID] = migrationControlBlock
 						}
 						if time.Now().After(migrationControlBlock.SentDeadline) {
-							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate",
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "CompleteMigration",
 								"target VM did not reach Running within %s after migration; VM may require manual recovery on node %s",
 								migrationSentTimeout, vm.Status.Migration.TargetNodeName)
 							vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed

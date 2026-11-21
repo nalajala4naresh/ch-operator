@@ -49,7 +49,7 @@ func (r *VMMReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	status := vmm.Status.DeepCopy()
 	if err := r.reconcile(ctx, &vmm); err != nil {
-		r.Recorder.Eventf(&vmm, nil, corev1.EventTypeWarning, "FailedReconcile", "FailedReconcile", "Failed to reconcile VMM: %s", err)
+		r.Recorder.Eventf(&vmm, nil, corev1.EventTypeWarning, "FailedReconcile", "Reconcile", "Failed to reconcile VMM: %s", err)
 		return ctrl.Result{}, err
 	}
 
@@ -154,7 +154,7 @@ func (r *VMMReconciler) reconcile(ctx context.Context, vmm *v1beta1.VirtualMachi
 	}
 
 	vmm.Status.Phase = v1beta1.VirtualMachineMigrationPending
-	r.Recorder.Eventf(vmm, nil, corev1.EventTypeNormal, "MigrationStarted", "MigrationStarted",
+	r.Recorder.Eventf(vmm, &vm, corev1.EventTypeNormal, "MigrationStarted", "Migrate",
 		"Started migration of VM %q from node %q", vm.Name, vm.Status.NodeName)
 	return nil
 }
@@ -169,7 +169,7 @@ func (r *VMMReconciler) mirror(ctx context.Context, vmm *v1beta1.VirtualMachineM
 
 	switch m.Phase {
 	case v1beta1.VirtualMachineMigrationSucceeded:
-		r.Recorder.Eventf(vmm, nil, corev1.EventTypeNormal, "MigrationSucceeded", "MigrationSucceeded",
+		r.Recorder.Eventf(vmm, vm, corev1.EventTypeNormal, "MigrationSucceeded", "Migrate",
 			"VM %q migrated to node %q", vm.Name, m.TargetNodeName)
 	case v1beta1.VirtualMachineMigrationFailed:
 		return r.handleFailedMigration(ctx, vmm, vm)
@@ -214,13 +214,13 @@ func (r *VMMReconciler) handleFailedMigration(ctx context.Context, vmm *v1beta1.
 				return err
 			}
 		}
-		r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, "MigrationFailed", "MigrationFailed",
+		r.Recorder.Eventf(vmm, vm, corev1.EventTypeWarning, "MigrationFailed", "Migrate",
 			"Migration of VM %q failed before cutover; VM remains on node %q, target Pod %q reclaimed",
 			vm.Name, vm.Status.NodeName, targetPodName)
 	} else {
 		// Past the PONR: the source is gone and the target may hold the only
 		// live VM state. Leave the target Pod in place for manual recovery.
-		r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, "MigrationFailedNeedsRecovery", "MigrationFailedNeedsRecovery",
+		r.Recorder.Eventf(vmm, vm, corev1.EventTypeWarning, "MigrationFailedNeedsRecovery", "Migrate",
 			"Migration of VM %q failed after cutover; source is gone, target Pod %q left in place for manual recovery on node %q",
 			vm.Name, targetPodName, vm.Status.Migration.TargetNodeName)
 	}
@@ -273,7 +273,7 @@ func isTerminalMigrationPhase(phase v1beta1.VirtualMachineMigrationPhase) bool {
 // update is persisted by the caller rather than triggering a requeue.
 func (r *VMMReconciler) fail(vmm *v1beta1.VirtualMachineMigration, reason, msg string) error {
 	vmm.Status.Phase = v1beta1.VirtualMachineMigrationFailed
-	r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, reason, reason, "%s", msg)
+	r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, reason, "Migrate", "%s", msg)
 	return nil
 }
 

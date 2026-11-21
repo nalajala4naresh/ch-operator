@@ -141,7 +141,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return reconcileErr.Result, nil
 		}
 
-		r.Recorder.Eventf(&vm, nil, corev1.EventTypeWarning, "FailedReconcile", "FailedReconcile", "Failed to reconcile VM: %s", rerr)
+		r.Recorder.Eventf(&vm, nil, corev1.EventTypeWarning, "FailedReconcile", "Reconcile", "Failed to reconcile VM: %s", rerr)
 		return ctrl.Result{}, rerr
 	}
 
@@ -175,7 +175,7 @@ func (r *VirtualMachineReconciler) gcVMPods(ctx context.Context, vm *v1beta1.Vir
 		if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("delete VM Pod: %s", err)
 		}
-		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "GCDeletedVMPod", "GCDeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
+		r.Recorder.Eventf(vm, &vmPod, corev1.EventTypeNormal, "GCDeletedVMPod", "GarbageCollect", "Deleted VM Pod %q", vmPod.Name)
 	}
 	return nil
 }
@@ -254,7 +254,7 @@ func (r *VirtualMachineReconciler) reconcile(ctx context.Context, vm *v1beta1.Vi
 					ctrl.Log.Error(err, "Unable to Create VM Pod", "vmdata", string(data), "status", vm.Status.Phase, "vm", vm.Name)
 					return fmt.Errorf("create VM Pod: %s", err)
 				}
-				r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "CreatedVMPod", "CreatedVMPod", "Created VM Pod %q", vmPod.Name)
+				r.Recorder.Eventf(vm, vmPod, corev1.EventTypeNormal, "CreatedVMPod", "Start", "Created VM Pod %q", vmPod.Name)
 			} else {
 				vm.Status.Phase = v1beta1.VirtualMachineFailed
 			}
@@ -402,7 +402,7 @@ func (r *VirtualMachineReconciler) reconcile(ctx context.Context, vm *v1beta1.Vi
 					if err := r.Create(ctx, targetVMPod); err != nil {
 						return fmt.Errorf("create target VM Pod: %s", err)
 					}
-					r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "CreatedTargetVMPod", "CreatedTargetVMPod", "Created target VM Pod %q", targetVMPod.Name)
+					r.Recorder.Eventf(vm, targetVMPod, corev1.EventTypeNormal, "CreatedTargetVMPod", "Migrate", "Created target VM Pod %q", targetVMPod.Name)
 				} else {
 					vm.Status.Migration.TargetVMPodUID = targetVMPod.UID
 					vm.Status.Migration.TargetNodeName = targetVMPod.Spec.NodeName
@@ -1005,7 +1005,7 @@ func (r *VirtualMachineReconciler) handleHotplugVolumes(ctx context.Context, vm 
 		if err := r.Create(ctx, volumePod); err != nil {
 			return err
 		}
-		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "CreatedHotplugVolumePod", "CreatedHotplugVolumePod", "Created VM Hotplug Volume Pod %q", volumePod.Name)
+		r.Recorder.Eventf(vm, volumePod, corev1.EventTypeNormal, "CreatedHotplugVolumePod", "AttachVolumes", "Created VM Hotplug Volume Pod %q", volumePod.Name)
 	}
 
 	for _, pod := range oldPods {
@@ -1013,7 +1013,7 @@ func (r *VirtualMachineReconciler) handleHotplugVolumes(ctx context.Context, vm 
 			if err := r.Client.Delete(ctx, pod); err != nil {
 				return err
 			}
-			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "DeletedHotplugVolumePod", "DeletedHotplugVolumePod", "Deleted VM Hotplug Volume Pod %q", pod.Name)
+			r.Recorder.Eventf(vm, pod, corev1.EventTypeNormal, "DeletedHotplugVolumePod", "AttachVolumes", "Deleted VM Hotplug Volume Pod %q", pod.Name)
 		}
 	}
 	return nil
@@ -1628,7 +1628,7 @@ func (r *VirtualMachineReconciler) deleteAllVMPods(ctx context.Context, vm *v1be
 		if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 			return false, fmt.Errorf("delete VM Pod: %s", err)
 		}
-		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "DeletedVMPod", "DeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
+		r.Recorder.Eventf(vm, &vmPod, corev1.EventTypeNormal, "DeletedVMPod", "Stop", "Deleted VM Pod %q", vmPod.Name)
 	}
 
 	// Pods are still terminating; their guests may still be shutting down. Report done only
@@ -1656,7 +1656,7 @@ func (r *VirtualMachineReconciler) stopVM(ctx context.Context, vm *v1beta1.Virtu
 	if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("delete VM Pod: %s", err)
 	}
-	r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "StoppingVM", "StoppingVM", "Stopping VM (%s): deleted VM Pod %q", reason, vmPod.Name)
+	r.Recorder.Eventf(vm, &vmPod, corev1.EventTypeNormal, "StoppingVM", "Stop", "Stopping VM (%s): deleted VM Pod %q", reason, vmPod.Name)
 	return nil
 }
 

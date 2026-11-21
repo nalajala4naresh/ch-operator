@@ -89,16 +89,16 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 	if err != nil {
 		switch {
 		case isChVMNotCreatedError(err):
-			r.recordStopped(vm, log, signalKey, elapsed, "no VM is created in Cloud Hypervisor")
+			r.recordStopped(vm, pod, log, signalKey, elapsed, "no VM is created in Cloud Hypervisor")
 			return true, nil
 		case isChUnreachableError(err):
-			r.recordStopped(vm, log, signalKey, elapsed, "Cloud Hypervisor has exited")
+			r.recordStopped(vm, pod, log, signalKey, elapsed, "Cloud Hypervisor has exited")
 			return true, nil
 		}
 		return false, fmt.Errorf("get VM info: %s", err)
 	}
 	if info.State != "Running" && info.State != "Paused" {
-		r.recordStopped(vm, log, signalKey, elapsed, fmt.Sprintf("Cloud Hypervisor reports state %q", info.State))
+		r.recordStopped(vm, pod, log, signalKey, elapsed, fmt.Sprintf("Cloud Hypervisor reports state %q", info.State))
 		return true, nil
 	}
 
@@ -107,13 +107,13 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 	case vmshutdown.ForceStop:
 		log.Info("Forcibly stopping VM", "state", info.State, "gracePeriod", grace.String())
 		if err := ch.VmShutdown(ctx); err != nil {
-			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMShutdown", "FailedVMShutdown", "Failed to stop VM: %s", err)
+			r.Recorder.Eventf(vm, pod, corev1.EventTypeWarning, "FailedVMShutdown", "ForceStop", "Failed to stop VM: %s", err)
 			return false, fmt.Errorf("force VM shutdown: %s", err)
 		}
 		if grace == 0 {
-			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMStopped", "VMStopped", "Graceful shutdown disabled, VM stopped")
+			r.Recorder.Eventf(vm, pod, corev1.EventTypeNormal, "VMStopped", "ForceStop", "Graceful shutdown disabled, VM stopped")
 		} else {
-			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMStopped", "VMStopped", "Grace period of %s expired, VM forcibly stopped", grace)
+			r.Recorder.Eventf(vm, pod, corev1.EventTypeNormal, "VMStopped", "ForceStop", "Grace period of %s expired, VM forcibly stopped", grace)
 		}
 		r.shutdownSignals.forget(signalKey)
 		return true, nil
@@ -127,7 +127,7 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 		}
 		log.Info("Pressed VM power button", "state", info.State, "remaining", remaining.String())
 		if r.shutdownSignals.markSent(signalKey) {
-			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "ShuttingDown", "ShuttingDown",
+			r.Recorder.Eventf(vm, pod, corev1.EventTypeNormal, "ShuttingDown", "Shutdown",
 				"Signaled graceful shutdown, VM will be forcibly stopped after %s", grace)
 		}
 		return false, requeueAfter(requeue)
@@ -138,10 +138,10 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 // signaled the shutdown, it logs and emits a VMShutdown event with how long the guest took;
 // later checks, or a VM that stopped without a signal from this daemon, log at debug level only,
 // so repeated reconciles don't flood the log.
-func (r *VMReconciler) recordStopped(vm *v1beta1.VirtualMachine, log logr.Logger, signalKey string, elapsed time.Duration, reason string) {
+func (r *VMReconciler) recordStopped(vm *v1beta1.VirtualMachine, pod *corev1.Pod, log logr.Logger, signalKey string, elapsed time.Duration, reason string) {
 	if r.shutdownSignals.forget(signalKey) {
 		log.Info("Guest shut down gracefully", "reason", reason)
-		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMShutdown", "VMShutdown", "Guest shut down gracefully after %s", elapsed)
+		r.Recorder.Eventf(vm, pod, corev1.EventTypeNormal, "VMShutdown", "Shutdown", "Guest shut down gracefully after %s", elapsed)
 		return
 	}
 	log.V(1).Info("VM is not running", "reason", reason)
