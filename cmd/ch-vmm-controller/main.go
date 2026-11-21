@@ -29,6 +29,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -149,8 +150,11 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
+		Scheme:  scheme,
+		Metrics: metricsServerOptions,
+		Cache: cache.Options{
+			DefaultTransform: cache.TransformStripManagedFields(),
+		},
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -183,7 +187,7 @@ func main() {
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
 		PrerunnerImageName: chImage,
-		Recorder:           mgr.GetEventRecorderFor("ch-vmm-controller-vm"),
+		Recorder:           mgr.GetEventRecorder("ch-vmm-controller-vm"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
@@ -194,7 +198,7 @@ func main() {
 	if err = (&controller.VMPoolReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-vmpool"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-vmpool"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VMPool")
 		os.Exit(1)
@@ -204,7 +208,7 @@ func main() {
 	if err = (&controller.VMSetReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-vmset"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-vmset"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VMSet")
 		os.Exit(1)
@@ -214,7 +218,7 @@ func main() {
 	if err = (&controller.VirtualDiskReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-virtualdisk"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-virtualdisk"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualDisk")
 		os.Exit(1)
@@ -225,7 +229,7 @@ func main() {
 	if err = (&controller.VirtualDiskSnapshotReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-virtualdisksnapshot"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-virtualdisksnapshot"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualDiskSnapshot")
 		os.Exit(1)
@@ -237,7 +241,7 @@ func main() {
 	if err = (&controller.VMMReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-vmmigration"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-vmmigration"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VMMigration")
 		os.Exit(1)
@@ -245,7 +249,7 @@ func main() {
 	if err = (&controller.EvacuationReconciler{
 		Client:       mgr.GetClient(),
 		Scheme:       mgr.GetScheme(),
-		Recorder:     mgr.GetEventRecorderFor("ch-vmm-controller-evacuation"),
+		Recorder:     mgr.GetEventRecorder("ch-vmm-controller-evacuation"),
 		MaxPerNode:   maxEvacuationsPerNode,
 		MaxInCluster: maxEvacuationsInCluster,
 	}).SetupWithManager(mgr); err != nil {
@@ -291,7 +295,7 @@ func main() {
 	if err = (&controller.VMSnapShotReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-vmsnapshot"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-vmsnapshot"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VMSnapShot")
 		os.Exit(1)
@@ -302,7 +306,7 @@ func main() {
 	if err = (&controller.VMRollbackReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ch-vmm-controller-vmrollback"),
+		Recorder: mgr.GetEventRecorder("ch-vmm-controller-vmrollback"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VMRollback")
 		os.Exit(1)

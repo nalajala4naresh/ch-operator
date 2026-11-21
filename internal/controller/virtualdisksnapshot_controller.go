@@ -14,7 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -32,7 +32,7 @@ const (
 type VirtualDiskSnapshotReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualdisksnapshots,verbs=get;list;watch;create;update;patch;delete
@@ -42,6 +42,7 @@ type VirtualDiskSnapshotReconciler struct {
 // +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshotcontents,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -92,11 +93,11 @@ func (r *VirtualDiskSnapshotReconciler) reconcileVirtualDiskSnapshot(ctx context
 		err = r.createVolumeSnapshot(ctx, virtualDiskSnapshot)
 		if err != nil {
 			log.Error(err, "Failed to create VolumeSnapshot")
-			r.Recorder.Event(virtualDiskSnapshot, "Warning", "VolumeSnapshotCreationFailed", fmt.Sprintf("Failed to create VolumeSnapshot: %v", err))
+			r.Recorder.Eventf(virtualDiskSnapshot, nil, "Warning", "VolumeSnapshotCreationFailed", "VolumeSnapshotCreationFailed", "%s", fmt.Sprintf("Failed to create VolumeSnapshot: %v", err))
 			return ctrl.Result{}, err
 		}
 		log.Info("Created VolumeSnapshot", "name", volumeSnapshotName)
-		r.Recorder.Event(virtualDiskSnapshot, "Normal", "VolumeSnapshotCreated", fmt.Sprintf("Created VolumeSnapshot %s", volumeSnapshotName))
+		r.Recorder.Eventf(virtualDiskSnapshot, nil, "Normal", "VolumeSnapshotCreated", "VolumeSnapshotCreated", "%s", fmt.Sprintf("Created VolumeSnapshot %s", volumeSnapshotName))
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
@@ -217,11 +218,11 @@ func (r *VirtualDiskSnapshotReconciler) mapVolumeSnapshotStatusToVirtualDiskSnap
 	if statusUpdated {
 		switch newPhase {
 		case string(v1beta1.VirtualDiskSnapshotReadyToUse):
-			r.Recorder.Event(virtualDiskSnapshot, "Normal", "VirtualDiskSnapshotReady", "VirtualDiskSnapshot is ready")
+			r.Recorder.Eventf(virtualDiskSnapshot, nil, "Normal", "VirtualDiskSnapshotReady", "VirtualDiskSnapshotReady", "%s", "VirtualDiskSnapshot is ready")
 		case string(v1beta1.VirtualDiskSnapshotError):
-			r.Recorder.Event(virtualDiskSnapshot, "Warning", "VirtualDiskSnapshotFailed", "VirtualDiskSnapshot failed")
+			r.Recorder.Eventf(virtualDiskSnapshot, nil, "Warning", "VirtualDiskSnapshotFailed", "VirtualDiskSnapshotFailed", "%s", "VirtualDiskSnapshot failed")
 		case "Creating":
-			r.Recorder.Event(virtualDiskSnapshot, "Normal", "VirtualDiskSnapshotCreating", "VirtualDiskSnapshot is being created")
+			r.Recorder.Eventf(virtualDiskSnapshot, nil, "Normal", "VirtualDiskSnapshotCreating", "VirtualDiskSnapshotCreating", "%s", "VirtualDiskSnapshot is being created")
 		}
 	}
 
@@ -248,7 +249,7 @@ func (r *VirtualDiskSnapshotReconciler) handleDeletion(ctx context.Context, virt
 
 	if err == nil {
 		log.Info("Deleted VolumeSnapshot", "name", volumeSnapshotName)
-		r.Recorder.Event(virtualDiskSnapshot, "Normal", "VolumeSnapshotDeleted", fmt.Sprintf("Deleted VolumeSnapshot %s", volumeSnapshotName))
+		r.Recorder.Eventf(virtualDiskSnapshot, nil, "Normal", "VolumeSnapshotDeleted", "VolumeSnapshotDeleted", "%s", fmt.Sprintf("Deleted VolumeSnapshot %s", volumeSnapshotName))
 	}
 
 	// Remove finalizer after VolumeSnapshot is deleted

@@ -19,7 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -29,7 +29,7 @@ import (
 type VMSnapShotReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	NodeName string
 	NodeIP   string
 }
@@ -209,7 +209,7 @@ func (r *VMSnapShotReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 		// All disk snapshots are ready
 		ctrl.LoggerFrom(ctx).Info("All disk snapshots are ready, marking VMSnapShot as ready", "totalDisks", len(snap.Status.DiskStatus))
-		r.Recorder.Eventf(&snap, corev1.EventTypeNormal, "AllDiskSnapshotsReady", "All disk snapshots are ready (%d disks)", len(snap.Status.DiskStatus))
+		r.Recorder.Eventf(&snap, nil, corev1.EventTypeNormal, "AllDiskSnapshotsReady", "AllDiskSnapshotsReady", "All disk snapshots are ready (%d disks)", len(snap.Status.DiskStatus))
 
 		// Mark VMSnapShot as ready (you might want to add a new phase like VMSnapShotReady)
 		// For now, we'll keep it in VMRestoreSpecCreated but with all disks ready
@@ -283,7 +283,7 @@ func (r *VMSnapShotReconciler) createVMSnapShot(ctx context.Context, vm *v1beta1
 	hyperDestination := filepath.Join(hyperPath, snap.Name)
 	// take the  snapshot
 	var rerr error
-	r.Recorder.Eventf(snap, corev1.EventTypeNormal, "SnapShotInProgress", "snapshot is in progress")
+	r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapShotInProgress", "SnapShotInProgress", "snapshot is in progress")
 
 	if !snap.Spec.SkipMemorySnapshot {
 		rerr = r.chSnapshot(ctx, vm, hyperDestination)
@@ -295,7 +295,7 @@ func (r *VMSnapShotReconciler) createVMSnapShot(ctx context.Context, vm *v1beta1
 			memStatus.Message = rerr.Error()
 			memStatus.Reason = "HypervisorSnapshotFailed"
 			snap.Status.MemoryStatus = *memStatus
-			r.Recorder.Eventf(snap, corev1.EventTypeWarning, "FailedToCreateMemorySnapshot", "failed to create snapshot due to %s", rerr)
+			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "FailedToCreateMemorySnapshot", "FailedToCreateMemorySnapshot", "failed to create snapshot due to %s", rerr)
 			return rerr
 
 		}
@@ -308,7 +308,7 @@ func (r *VMSnapShotReconciler) createVMSnapShot(ctx context.Context, vm *v1beta1
 			memStatus.Reason = "FailedToUploadToBucket"
 			memStatus.Ready = false
 			snap.Status.MemoryStatus = *memStatus
-			r.Recorder.Eventf(snap, corev1.EventTypeWarning, "FailedToUploadMemorySnapshot", "failed to upload snapshot to bucket %s", snap.Spec.Bucket)
+			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "FailedToUploadMemorySnapshot", "FailedToUploadMemorySnapshot", "failed to upload snapshot to bucket %s", snap.Spec.Bucket)
 			return rerr
 
 		}
@@ -386,7 +386,7 @@ func (r *VMSnapShotReconciler) snapshotDisks(ctx context.Context, snap *v1beta1.
 						Reason:  err.Error(),
 					}
 					snap.Status.DiskStatus = append(snap.Status.DiskStatus, diskStatus)
-					r.Recorder.Eventf(snap, corev1.EventTypeWarning, "VirtualDiskSnapshotCreationFailed", "Failed to create VirtualDiskSnapshot for volume %s: %s", vol.Name, err)
+					r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "VirtualDiskSnapshotCreationFailed", "VirtualDiskSnapshotCreationFailed", "Failed to create VirtualDiskSnapshot for volume %s: %s", vol.Name, err)
 					return err
 				}
 
@@ -400,7 +400,7 @@ func (r *VMSnapShotReconciler) snapshotDisks(ctx context.Context, snap *v1beta1.
 				snap.Status.DiskStatus = append(snap.Status.DiskStatus, diskStatus)
 
 				ctrl.LoggerFrom(ctx).Info("Created VirtualDiskSnapshot", "name", virtualDiskSnapshotName)
-				r.Recorder.Eventf(snap, corev1.EventTypeNormal, "VirtualDiskSnapshotCreated", "Created VirtualDiskSnapshot for volume %s", vol.Name)
+				r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "VirtualDiskSnapshotCreated", "VirtualDiskSnapshotCreated", "Created VirtualDiskSnapshot for volume %s", vol.Name)
 				continue
 			}
 

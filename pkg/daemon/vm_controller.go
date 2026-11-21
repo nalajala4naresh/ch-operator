@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -44,7 +44,7 @@ const (
 type VMReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	NodeName string
 	NodeIP   string
@@ -61,6 +61,7 @@ type VMReconciler struct {
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 
@@ -143,14 +144,14 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 		//wait for the prerunner to complete populating snapshot directory.
 		_, err := os.Stat(filepath.Join(getVMMemoryDataDirPath(vm), "snap", "done.txt"))
 		if err != nil {
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "PrerunnerStage", "waiting on prerunner to create vm snapshot direcory %s", err)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "PrerunnerStage", "PrerunnerStage", "waiting on prerunner to create vm snapshot direcory %s", err)
 			err = errors.New("waiting prerunner prepare vm snapshot direcory ")
 			return err
 		}
 		chClient := getCloudHypervisorClient(vm)
 		err = chClient.VmRestore(ctx, &cloudhypervisor.RestoreConfig{SourceUrl: "file:///mnt/memory/snap"})
 		if err != nil {
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMRestoreFailed", "failed to restore vm with error %s", err)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "VMRestoreFailed", "VMRestoreFailed", "failed to restore vm with error %s", err)
 			return err
 		}
 
@@ -182,7 +183,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 			vmConfigFile, err := os.Open(vmConfigFilePath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					r.Recorder.Eventf(vm, corev1.EventTypeWarning, "PrerunnerStage", "waiting on prerunner to create VM config")
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "PrerunnerStage", "PrerunnerStage", "waiting on prerunner to create VM config")
 					err = errors.New("waiting prerunner prepare VM config")
 					return err
 				}
@@ -218,13 +219,13 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 				return fmt.Errorf("create VM: %s", err)
 			}
 			ctrl.Log.Info("VM Created", "vm", vm.Name)
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMCreated", "Cloud Hypervisor VM Created")
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMCreated", "VMCreated", "Cloud Hypervisor VM Created")
 			if err := chClient.VmBoot(ctx); err != nil {
 				ctrl.Log.Error(err, "vm boot failed", "vm", vm.Name)
 				return err
 			}
 			ctrl.Log.Info("VM Booted", "vm", vm.Name)
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMBooted", "Cloud Hypervisor VM Booted")
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMBooted", "VMBooted", "Cloud Hypervisor VM Booted")
 		} else {
 			switch vmInfo.State {
 			case "Created":
@@ -234,7 +235,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 					return err
 				}
 				ctrl.Log.Info("VM Booted", "vm", vm.Name)
-				r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMBooted", "Cloud Hypervisor VM Booted")
+				r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMBooted", "VMBooted", "Cloud Hypervisor VM Booted")
 			case "Running":
 				vm.Status.Phase = v1beta1.VirtualMachineRunning
 			case "Paused":
@@ -255,9 +256,9 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 			}
 			if vmInfo.State == "Running" {
 				if err := getCloudHypervisorClient(vm).VmPause(ctx); err != nil {
-					r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMPause", "Failed to pause VM")
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMPause", "FailedVMPause", "Failed to pause VM")
 				} else {
-					r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMPaused", "Cloud Hypervisor VM Paused")
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMPaused", "VMPaused", "Cloud Hypervisor VM Paused")
 				}
 
 			}
@@ -276,11 +277,11 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 			}
 			if vmInfo.State == "Paused" {
 				if err := getCloudHypervisorClient(vm).VmResume(ctx); err != nil {
-					r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedResume", "Failed to pause VM")
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedResume", "FailedResume", "Failed to pause VM")
 					return err
 
 				} else {
-					r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMResumed", "Cloud Hypervisor VM Resumed")
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMResumed", "VMResumed", "Cloud Hypervisor VM Resumed")
 				}
 
 				vm.Status.Phase = v1beta1.VirtualMachineRunning
@@ -346,14 +347,14 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 				}
 
 				if err := chClient.VmResize(ctx, resizeReq); err != nil {
-					r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMResizeFailed",
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "VMResizeFailed", "VMResizeFailed",
 						"Failed to resize VM: %s", err)
 					return fmt.Errorf("resize VM: %s", err)
 				}
 
 				ctrl.Log.Info("VM resize: Resize request sent to Cloud Hypervisor",
 					"vm", vm.Name, "vcpus", desiredVcpus, "ram", desiredRam)
-				r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMResizeInitiated",
+				r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMResizeInitiated", "VMResizeInitiated",
 					"VM resize initiated: vCPUs=%d, RAM=%d bytes", desiredVcpus, desiredRam)
 				// Will be checked in next reconcile to verify resize completed
 				return nil
@@ -363,7 +364,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 			vm.Status.Phase = v1beta1.VirtualMachineRunning
 			ctrl.Log.Info("VM resize: Resize completed, transitioning to Running",
 				"vm", vm.Name)
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMResizeCompleted",
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMResizeCompleted", "VMResizeCompleted",
 				"VM resize completed successfully")
 		}
 
@@ -387,28 +388,28 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						// A soft request to the guest with no deadline. To stop a VM with a
 						// deadline, set runPolicy to Halted or delete the VM.
 						if err := getCloudHypervisorClient(vm).VmPowerButton(ctx); err != nil {
-							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMPowerOff", "Failed to powered off VM")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMPowerOff", "FailedVMPowerOff", "Failed to powered off VM")
 						} else {
-							r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMPoweredOff", "Cloud Hypervisor VM PowerdOff")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMPoweredOff", "VMPoweredOff", "Cloud Hypervisor VM PowerdOff")
 						}
 					case v1beta1.VirtualMachineShutdown:
 						if err := getCloudHypervisorClient(vm).VmShutdown(ctx); err != nil {
-							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMShutdown", "Failed to shutdown VM")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMShutdown", "FailedVMShutdown", "Failed to shutdown VM")
 						} else {
-							r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMShutdown", "Cloud Hypervisor VM Shutdown ")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMShutdown", "VMShutdown", "Cloud Hypervisor VM Shutdown ")
 						}
 					case v1beta1.VirtualMachineReset:
 						if err := getCloudHypervisorClient(vm).VmReboot(ctx); err != nil {
-							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMReset", "Failed to reset VM")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMReset", "FailedVMReset", "Failed to reset VM")
 						} else {
-							r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMReset", "Cloud Hypervisor VM Reset")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMReset", "VMReset", "Cloud Hypervisor VM Reset")
 						}
 					case v1beta1.VirtualMachineReboot:
 						// TODO: reboot
 						if err := getCloudHypervisorClient(vm).VmReboot(ctx); err != nil {
-							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMReboot", "Failed to reboot VM")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMReboot", "FailedVMReboot", "Failed to reboot VM")
 						} else {
-							r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMRebooted", "Cloud Hypervisor VM Rebooted")
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMRebooted", "VMRebooted", "Cloud Hypervisor VM Rebooted")
 						}
 					default:
 						// ignored
@@ -442,7 +443,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						}
 						return true, nil
 					}); err != nil {
-						r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMMigrate", "timeout for waiting cloud-hypervisor be running")
+						r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate", "timeout for waiting cloud-hypervisor be running")
 						vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
 						return nil
 					}
@@ -479,7 +480,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						}
 
 						if err := wait.PollUntilContextTimeout(ctx, time.Second, 10*time.Second, true, condition.WithContext()); err != nil {
-							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMMigrate", "Failed to receive migration on %s: %s", vm.Status.Migration.TargetNodeName, err)
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate", "Failed to receive migration on %s: %s", vm.Status.Migration.TargetNodeName, err)
 							vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
 							return nil
 						}
@@ -544,7 +545,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 						select {
 						case err := <-migrationControlBlock.SendMigrationErrCh:
 							if err != nil {
-								r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMMigrate", "Failed to migrate VM to %s: %s", vm.Status.Migration.TargetNodeName, err)
+								r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate", "Failed to migrate VM to %s: %s", vm.Status.Migration.TargetNodeName, err)
 								vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
 							}
 						default:
@@ -564,7 +565,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 								if err := getCloudHypervisorClient(vm).VmCancelMigration(ctx); err != nil {
 									log.Error(err, "cancel migration")
 								}
-								r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMMigrate",
+								r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate",
 									"send-migration did not complete within %s; VM is still running on source node %s",
 									migrationRunningTimeout, r.NodeName)
 								vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
@@ -601,7 +602,7 @@ func (r *VMReconciler) chReconcile(ctx context.Context, vm *v1beta1.VirtualMachi
 							r.migrationControlBlocks[vm.UID] = migrationControlBlock
 						}
 						if time.Now().After(migrationControlBlock.SentDeadline) {
-							r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMMigrate",
+							r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMMigrate", "FailedVMMigrate",
 								"target VM did not reach Running within %s after migration; VM may require manual recovery on node %s",
 								migrationSentTimeout, vm.Status.Migration.TargetNodeName)
 							vm.Status.Migration.Phase = v1beta1.VirtualMachineMigrationFailed
@@ -721,7 +722,7 @@ func (r *VMReconciler) mountHotplugVolumes(ctx context.Context, vm *v1beta1.Virt
 		}
 		if volumeStatus.Phase == v1beta1.VolumeAttachedToNode {
 			volumeStatus.Phase = v1beta1.VolumeMountedToPod
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "MountVolumeToPod", "Mounted volume %s to VM pod", volumeStatus.Name)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "MountVolumeToPod", "MountVolumeToPod", "Mounted volume %s to VM pod", volumeStatus.Name)
 		}
 	}
 	return nil
@@ -869,7 +870,7 @@ func (r *VMReconciler) umountAllHotplugVolumes(ctx context.Context, vm *v1beta1.
 		if err := r.umountHotplugVolume(ctx, vm, &volumeRecord); err != nil {
 			return err
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "UmountVolumeFromPod", "Umount volume %s from VM pod", volumeRecord.Volume)
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "UmountVolumeFromPod", "UmountVolumeFromPod", "Umount volume %s from VM pod", volumeRecord.Volume)
 	}
 
 	if err := removeVMMountRecord(vm.UID); err != nil {
@@ -922,7 +923,7 @@ func (r *VMReconciler) umountHotplugVolume(ctx context.Context, vm *v1beta1.Virt
 			}
 		}
 	}
-	r.Recorder.Eventf(vm, corev1.EventTypeNormal, "UmountVolumeFromPod", "Umount volume %s from VM pod", volumeRecord.Volume)
+	r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "UmountVolumeFromPod", "UmountVolumeFromPod", "Umount volume %s from VM pod", volumeRecord.Volume)
 	return nil
 }
 
@@ -968,7 +969,7 @@ func (r *VMReconciler) addHotplugVolumesToVM(ctx context.Context, vm *v1beta1.Vi
 				if _, err := getCloudHypervisorClient(vm).VmAddDisk(ctx, diskConfig); err != nil {
 					return fmt.Errorf("add disk: %s", err)
 				}
-				r.Recorder.Eventf(vm, corev1.EventTypeNormal, "AddDiskToVM", "Added disk %s to VM", volumeStatus.Name)
+				r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "AddDiskToVM", "AddDiskToVM", "Added disk %s to VM", volumeStatus.Name)
 			}
 			volumeStatus.Phase = v1beta1.VolumeReady
 		}
@@ -987,7 +988,7 @@ func (r *VMReconciler) removeHotplugVolumesFromVM(ctx context.Context, vm *v1bet
 			if err := getCloudHypervisorClient(vm).VmRemoveDevice(ctx, &cloudhypervisor.VmRemoveDevice{Id: disk.Id}); err != nil {
 				return fmt.Errorf("remove disk from VM: %s", err)
 			}
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "RemoveDiskFromVM", "Remove disk %s from VM", disk.Id)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "RemoveDiskFromVM", "RemoveDiskFromVM", "Remove disk %s from VM", disk.Id)
 		}
 	}
 	return nil
@@ -1120,7 +1121,7 @@ func (r *VMReconciler) reconcileDeletingVM(ctx context.Context, vm *v1beta1.Virt
 		if err := chClient.VmDelete(ctx); err != nil {
 			ctrl.Log.Info("VM delete after shutdown failed", "vm", vm.Name, "err", err.Error())
 		} else {
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMDeleted", "CloudHypervsior VM Deleted")
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMDeleted", "VMDeleted", "CloudHypervsior VM Deleted")
 		}
 	}
 	vm.Status.Phase = v1beta1.VirtualMachineSucceeded

@@ -10,7 +10,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,7 +38,7 @@ const (
 type EvacuationReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	// MaxPerNode and MaxInCluster bound the evacuation migrations in flight off a single
 	// node and across the cluster. Zero means unlimited.
@@ -51,6 +51,7 @@ type EvacuationReconciler struct {
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachinemigrations,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 
 func (r *EvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
@@ -73,7 +74,7 @@ func (r *EvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// The VM has left the node, or stopped: the evacuation is over.
 	if vm.DeletionTimestamp != nil || vm.Status.NodeName != node || !vmshutdown.IsActivePhase(vm.Status.Phase) {
 		if vm.Status.NodeName != node && vmshutdown.IsActivePhase(vm.Status.Phase) {
-			r.Recorder.Eventf(&vm, corev1.EventTypeNormal, "Evacuated", "VM evacuated from node %q to %q", node, vm.Status.NodeName)
+			r.Recorder.Eventf(&vm, nil, corev1.EventTypeNormal, "Evacuated", "Evacuated", "VM evacuated from node %q to %q", node, vm.Status.NodeName)
 		}
 		if err := r.clearEvacuation(ctx, &vm); err != nil {
 			return ctrl.Result{}, err
@@ -123,12 +124,12 @@ func (r *EvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// The migration webhook refuses VMs that are not currently migratable; wait for
 		// the condition to change.
 		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
-			r.Recorder.Eventf(&vm, corev1.EventTypeWarning, "EvacuationBlocked", "Cannot live-migrate VM off node %q: %s", node, err)
+			r.Recorder.Eventf(&vm, nil, corev1.EventTypeWarning, "EvacuationBlocked", "EvacuationBlocked", "Cannot live-migrate VM off node %q: %s", node, err)
 			return ctrl.Result{RequeueAfter: evacuationWaitInterval}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("create evacuation migration: %w", err)
 	}
-	r.Recorder.Eventf(&vm, corev1.EventTypeNormal, "EvacuationStarted", "Live-migrating VM off node %q (migration %q)", node, vmm.Name)
+	r.Recorder.Eventf(&vm, nil, corev1.EventTypeNormal, "EvacuationStarted", "EvacuationStarted", "Live-migrating VM off node %q (migration %q)", node, vmm.Name)
 	return ctrl.Result{}, nil
 }
 

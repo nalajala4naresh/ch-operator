@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,7 +33,7 @@ import (
 type VMRollbackReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=vmrollbacks,verbs=get;list;watch;create;update;patch;delete
@@ -43,6 +43,7 @@ type VMRollbackReconciler struct {
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -104,7 +105,7 @@ func (r *VMRollbackReconciler) reconcile(ctx context.Context, vr v1beta1.VMRollb
 	//fetch the backing snapshot for the rollback & if not found fail the process
 	if err := r.Get(ctx, snapshotName, &vs); err != nil {
 		vr.Status.Phase = v1beta1.RollbackFailed
-		r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "MissingSnapshot", "Snapshot missing %q", vr.Name)
+		r.Recorder.Eventf(&vr, nil, corev1.EventTypeWarning, "MissingSnapshot", "MissingSnapshot", "Snapshot missing %q", vr.Name)
 		if err := r.Status().Update(ctx, &vr); err != nil {
 
 			return fmt.Errorf("unable to update VMRollback status : %s", err)
@@ -119,7 +120,7 @@ func (r *VMRollbackReconciler) reconcile(ctx context.Context, vr v1beta1.VMRollb
 	vrsName := types.NamespacedName{Namespace: vr.Namespace, Name: vr.Spec.Snapshot}
 	if err := r.Get(ctx, vrsName, &vrs); err != nil {
 		vr.Status.Phase = v1beta1.RollbackFailed
-		r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "MissingRestoreSpec", "VMRestoreSpec missing %q", vr.Name)
+		r.Recorder.Eventf(&vr, nil, corev1.EventTypeWarning, "MissingRestoreSpec", "MissingRestoreSpec", "VMRestoreSpec missing %q", vr.Name)
 		if err := r.Status().Update(ctx, &vr); err != nil {
 
 			return fmt.Errorf("unable to update VMRollback status : %s", err)
@@ -151,10 +152,10 @@ func (r *VMRollbackReconciler) reconcile(ctx context.Context, vr v1beta1.VMRollb
 			vol := &v1beta1.Volume{Name: disk.Name,
 				VolumeSource: v1beta1.VolumeSource{PersistentVolumeClaim: &v1beta1.PersistentVolumeClaimVolumeSource{ClaimName: disk.SnapshotName}}}
 			if err != nil {
-				r.Recorder.Eventf(&vr, corev1.EventTypeWarning, "RecoverSnapShotToPVCFailed", "pvc restoration from snapshot failed %q with error %s", disk.Name, err)
+				r.Recorder.Eventf(&vr, nil, corev1.EventTypeWarning, "RecoverSnapShotToPVCFailed", "RecoverSnapShotToPVCFailed", "pvc restoration from snapshot failed %q with error %s", disk.Name, err)
 				return err
 			}
-			r.Recorder.Eventf(&vr, corev1.EventTypeNormal, "RecoverSnapShotToPVCSucceeded", "pvc restoration from snapshot succeeded %q", disk.Name)
+			r.Recorder.Eventf(&vr, nil, corev1.EventTypeNormal, "RecoverSnapShotToPVCSucceeded", "RecoverSnapShotToPVCSucceeded", "pvc restoration from snapshot succeeded %q", disk.Name)
 			mu.Lock()
 			volumes = append(volumes, vol)
 			mu.Unlock()

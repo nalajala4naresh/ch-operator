@@ -17,7 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -33,7 +33,7 @@ const SnapShotFinalizer = "cloudhypervisor.quill.today/vmsnapshot-protection"
 type VMSnapShotReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=vmsnapshots,verbs=get;list;watch;create;update;patch;delete
@@ -97,7 +97,7 @@ func (s *VMSnapShotReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		var vm v1beta1.VirtualMachine
 		if err := s.Get(ctx, vmkey, &vm); err != nil {
 			if apierrors.IsNotFound(err) {
-				s.Recorder.Eventf(&vm, corev1.EventTypeWarning, "VMNotFound", "VM not found")
+				s.Recorder.Eventf(&vm, nil, corev1.EventTypeWarning, "VMNotFound", "VMNotFound", "VM not found")
 			}
 			snap.Status.VMSnapShotStatusPhase = v1beta1.VMSnapshotFailed
 
@@ -141,11 +141,11 @@ func (s *VMSnapShotReconciler) deleteSnapshot(ctx context.Context, snap v1beta1.
 		}
 
 		if err == nil {
-			s.Recorder.Eventf(&snap, corev1.EventTypeNormal, "MemorySnapshotDeleted", "Memory snapshot deleted %s", memeorySnapName)
+			s.Recorder.Eventf(&snap, nil, corev1.EventTypeNormal, "MemorySnapshotDeleted", "MemorySnapshotDeleted", "Memory snapshot deleted %s", memeorySnapName)
 
 		} else {
 
-			s.Recorder.Eventf(&snap, corev1.EventTypeWarning, "MemorySnapshotDeleteFailed", "Memory snapshot delete failed for %s", memeorySnapName)
+			s.Recorder.Eventf(&snap, nil, corev1.EventTypeWarning, "MemorySnapshotDeleteFailed", "MemorySnapshotDeleteFailed", "Memory snapshot delete failed for %s", memeorySnapName)
 			return err
 
 		}
@@ -167,15 +167,15 @@ func (s *VMSnapShotReconciler) deleteSnapshot(ctx context.Context, snap v1beta1.
 			if apierrors.IsNotFound(err) {
 				// VirtualDiskSnapshot was already deleted, log and continue
 				log.FromContext(ctx).Info("VirtualDiskSnapshot already deleted", "name", disk.Name)
-				s.Recorder.Eventf(&snap, corev1.EventTypeNormal, "VirtualDiskSnapshotDeleted", "VirtualDiskSnapshot already deleted %s", disk.Name)
+				s.Recorder.Eventf(&snap, nil, corev1.EventTypeNormal, "VirtualDiskSnapshotDeleted", "VirtualDiskSnapshotDeleted", "VirtualDiskSnapshot already deleted %s", disk.Name)
 				continue
 			} else {
-				s.Recorder.Eventf(&snap, corev1.EventTypeWarning, "VirtualDiskSnapshotDeleteFailed", "Failed to delete VirtualDiskSnapshot %s: %v", disk.Name, err)
+				s.Recorder.Eventf(&snap, nil, corev1.EventTypeWarning, "VirtualDiskSnapshotDeleteFailed", "VirtualDiskSnapshotDeleteFailed", "Failed to delete VirtualDiskSnapshot %s: %v", disk.Name, err)
 				return err
 			}
 		}
 
-		s.Recorder.Eventf(&snap, corev1.EventTypeNormal, "VirtualDiskSnapshotDeleted", "VirtualDiskSnapshot deleted %s", disk.Name)
+		s.Recorder.Eventf(&snap, nil, corev1.EventTypeNormal, "VirtualDiskSnapshotDeleted", "VirtualDiskSnapshotDeleted", "VirtualDiskSnapshot deleted %s", disk.Name)
 
 	}
 

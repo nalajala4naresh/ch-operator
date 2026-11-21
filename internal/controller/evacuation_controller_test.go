@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -58,7 +58,7 @@ func newEvacuationReconciler(t *testing.T, objs ...client.Object) *EvacuationRec
 	c := fake.NewClientBuilder().WithScheme(scheme).
 		WithStatusSubresource(&v1beta1.VirtualMachine{}, &v1beta1.VirtualMachineMigration{}).
 		WithObjects(objs...).Build()
-	return &EvacuationReconciler{Client: c, Scheme: scheme, Recorder: record.NewFakeRecorder(100)}
+	return &EvacuationReconciler{Client: c, Scheme: scheme, Recorder: events.NewFakeRecorder(100)}
 }
 
 func reconcileVM(t *testing.T, r *EvacuationReconciler, name string) ctrl.Result {

@@ -107,13 +107,13 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 	case vmshutdown.ForceStop:
 		log.Info("Forcibly stopping VM", "state", info.State, "gracePeriod", grace.String())
 		if err := ch.VmShutdown(ctx); err != nil {
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "FailedVMShutdown", "Failed to stop VM: %s", err)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "FailedVMShutdown", "FailedVMShutdown", "Failed to stop VM: %s", err)
 			return false, fmt.Errorf("force VM shutdown: %s", err)
 		}
 		if grace == 0 {
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMStopped", "Graceful shutdown disabled, VM stopped")
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMStopped", "VMStopped", "Graceful shutdown disabled, VM stopped")
 		} else {
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMStopped", "Grace period of %s expired, VM forcibly stopped", grace)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMStopped", "VMStopped", "Grace period of %s expired, VM forcibly stopped", grace)
 		}
 		r.shutdownSignals.forget(signalKey)
 		return true, nil
@@ -127,7 +127,7 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 		}
 		log.Info("Pressed VM power button", "state", info.State, "remaining", remaining.String())
 		if r.shutdownSignals.markSent(signalKey) {
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "ShuttingDown",
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "ShuttingDown", "ShuttingDown",
 				"Signaled graceful shutdown, VM will be forcibly stopped after %s", grace)
 		}
 		return false, requeueAfter(requeue)
@@ -141,7 +141,7 @@ func (r *VMReconciler) stopGracefully(ctx context.Context, vm *v1beta1.VirtualMa
 func (r *VMReconciler) recordStopped(vm *v1beta1.VirtualMachine, log logr.Logger, signalKey string, elapsed time.Duration, reason string) {
 	if r.shutdownSignals.forget(signalKey) {
 		log.Info("Guest shut down gracefully", "reason", reason)
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMShutdown", "Guest shut down gracefully after %s", elapsed)
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMShutdown", "VMShutdown", "Guest shut down gracefully after %s", elapsed)
 		return
 	}
 	log.V(1).Info("VM is not running", "reason", reason)

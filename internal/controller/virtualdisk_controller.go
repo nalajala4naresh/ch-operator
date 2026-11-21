@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -34,7 +34,7 @@ const (
 type VirtualDiskReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualdisks,verbs=get;list;watch;create;update;patch;delete
@@ -42,6 +42,7 @@ type VirtualDiskReconciler struct {
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualdisks/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cdi.kubevirt.io,resources=datavolumes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -92,11 +93,11 @@ func (r *VirtualDiskReconciler) reconcileVirtualDisk(ctx context.Context, virtua
 		err = r.createDataVolume(ctx, virtualDisk)
 		if err != nil {
 			log.Error(err, "Failed to create DataVolume")
-			r.Recorder.Event(virtualDisk, "Warning", "DataVolumeCreationFailed", fmt.Sprintf("Failed to create DataVolume: %v", err))
+			r.Recorder.Eventf(virtualDisk, nil, "Warning", "DataVolumeCreationFailed", "DataVolumeCreationFailed", "%s", fmt.Sprintf("Failed to create DataVolume: %v", err))
 			return ctrl.Result{}, err
 		}
 		log.Info("Created DataVolume", "name", dataVolumeName)
-		r.Recorder.Event(virtualDisk, "Normal", "DataVolumeCreated", fmt.Sprintf("Created DataVolume %s", dataVolumeName))
+		r.Recorder.Eventf(virtualDisk, nil, "Normal", "DataVolumeCreated", "DataVolumeCreated", "%s", fmt.Sprintf("Created DataVolume %s", dataVolumeName))
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
@@ -124,7 +125,7 @@ func (r *VirtualDiskReconciler) reconcileVirtualDisk(ctx context.Context, virtua
 			return ctrl.Result{}, err
 		}
 		log.Info("VirtualDisk is ready", "name", virtualDisk.Name)
-		r.Recorder.Event(virtualDisk, "Normal", "VirtualDiskReady", "VirtualDisk is ready")
+		r.Recorder.Eventf(virtualDisk, nil, "Normal", "VirtualDiskReady", "VirtualDiskReady", "%s", "VirtualDisk is ready")
 	}
 
 	return ctrl.Result{}, nil
@@ -243,7 +244,7 @@ func (r *VirtualDiskReconciler) handleDeletion(ctx context.Context, virtualDisk 
 
 	if err == nil {
 		log.Info("Deleted DataVolume", "name", dataVolumeName)
-		r.Recorder.Event(virtualDisk, "Normal", "DataVolumeDeleted", fmt.Sprintf("Deleted DataVolume %s", dataVolumeName))
+		r.Recorder.Eventf(virtualDisk, nil, "Normal", "DataVolumeDeleted", "DataVolumeDeleted", "%s", fmt.Sprintf("Deleted DataVolume %s", dataVolumeName))
 	}
 
 	// Remove finalizer after DataVolume is deleted

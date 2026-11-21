@@ -9,7 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 
 	"github.com/nalajala4naresh/ch-operator/pkg/cloudhypervisor"
 	v1beta1 "github.com/nalajala4naresh/chvmm-api/v1beta1"
@@ -56,12 +56,12 @@ func terminating(grace int64, requested time.Time) (*v1beta1.VirtualMachine, *co
 	return vm, pod
 }
 
-func newTestReconciler(now *time.Time) (*VMReconciler, *record.FakeRecorder) {
-	rec := record.NewFakeRecorder(10)
+func newTestReconciler(now *time.Time) (*VMReconciler, *events.FakeRecorder) {
+	rec := events.NewFakeRecorder(10)
 	return &VMReconciler{Recorder: rec, now: func() time.Time { return *now }}, rec
 }
 
-func drain(rec *record.FakeRecorder) []string {
+func drain(rec *events.FakeRecorder) []string {
 	var events []string
 	for {
 		select {

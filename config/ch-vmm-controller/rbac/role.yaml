@@ -7,14 +7,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
-  verbs:
-  - create
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
   - persistentvolumeclaims
   - pods
   verbs:
@@ -30,6 +22,15 @@ rules:
   resources:
   - pods/resize
   verbs:
+  - update
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
   - update
 - apiGroups:
   - cdi.kubevirt.io

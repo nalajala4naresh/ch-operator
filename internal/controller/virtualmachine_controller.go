@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/storage/names"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -50,7 +50,7 @@ type VirtualMachineReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	Recorder           record.EventRecorder
+	Recorder           events.EventRecorder
 	PrerunnerImageName string
 }
 
@@ -59,6 +59,7 @@ type VirtualMachineReconciler struct {
 // +kubebuilder:rbac:groups="",resources=pods/resize,verbs=update
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cdi.kubevirt.io,resources=datavolumes,verbs=get;list;watch
@@ -140,7 +141,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return reconcileErr.Result, nil
 		}
 
-		r.Recorder.Eventf(&vm, corev1.EventTypeWarning, "FailedReconcile", "Failed to reconcile VM: %s", rerr)
+		r.Recorder.Eventf(&vm, nil, corev1.EventTypeWarning, "FailedReconcile", "FailedReconcile", "Failed to reconcile VM: %s", rerr)
 		return ctrl.Result{}, rerr
 	}
 
@@ -174,7 +175,7 @@ func (r *VirtualMachineReconciler) gcVMPods(ctx context.Context, vm *v1beta1.Vir
 		if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("delete VM Pod: %s", err)
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "GCDeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "GCDeletedVMPod", "GCDeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
 	}
 	return nil
 }
@@ -253,7 +254,7 @@ func (r *VirtualMachineReconciler) reconcile(ctx context.Context, vm *v1beta1.Vi
 					ctrl.Log.Error(err, "Unable to Create VM Pod", "vmdata", string(data), "status", vm.Status.Phase, "vm", vm.Name)
 					return fmt.Errorf("create VM Pod: %s", err)
 				}
-				r.Recorder.Eventf(vm, corev1.EventTypeNormal, "CreatedVMPod", "Created VM Pod %q", vmPod.Name)
+				r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "CreatedVMPod", "CreatedVMPod", "Created VM Pod %q", vmPod.Name)
 			} else {
 				vm.Status.Phase = v1beta1.VirtualMachineFailed
 			}
@@ -401,7 +402,7 @@ func (r *VirtualMachineReconciler) reconcile(ctx context.Context, vm *v1beta1.Vi
 					if err := r.Create(ctx, targetVMPod); err != nil {
 						return fmt.Errorf("create target VM Pod: %s", err)
 					}
-					r.Recorder.Eventf(vm, corev1.EventTypeNormal, "CreatedTargetVMPod", "Created target VM Pod %q", targetVMPod.Name)
+					r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "CreatedTargetVMPod", "CreatedTargetVMPod", "Created target VM Pod %q", targetVMPod.Name)
 				} else {
 					vm.Status.Migration.TargetVMPodUID = targetVMPod.UID
 					vm.Status.Migration.TargetNodeName = targetVMPod.Spec.NodeName
@@ -537,7 +538,7 @@ func (r *VirtualMachineReconciler) checkAndSetResizePhase(ctx context.Context, v
 			"actualMem", actualMem.String(),
 			"desiredMem", desiredMem.String())
 
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMResizeInitiated",
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMResizeInitiated", "VMResizeInitiated",
 			"VM resize initiated: CPU=%s->%s, Memory=%s->%s",
 			actualCPU.String(), desiredCPU.String(),
 			actualMem.String(), desiredMem.String())
@@ -608,7 +609,7 @@ func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm 
 		if cond.Reason == corev1.PodReasonInfeasible {
 			ctrl.Log.Info("VM resize: Pod resize infeasible",
 				"vm", vm.Name, "pod", vmPod.Name, "message", cond.Message)
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMPodResizeInfeasible",
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "VMPodResizeInfeasible", "VMPodResizeInfeasible",
 				"Pod resize is infeasible, cannot resize VM: %s", cond.Message)
 			// Transition back to Running
 			vm.Status.Phase = v1beta1.VirtualMachineRunning
@@ -622,7 +623,7 @@ func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm 
 
 	if cond := getPodCondition(&vmPod, corev1.PodResizeInProgress); cond != nil {
 		if cond.Reason == corev1.PodReasonError {
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMPodResizeError",
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "VMPodResizeError", "VMPodResizeError",
 				"Pod resize failed, kubelet will retry: %s", cond.Message)
 		}
 
@@ -706,12 +707,12 @@ func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm 
 				// Conflict is expected, will be retried
 				return nil
 			}
-			r.Recorder.Eventf(vm, corev1.EventTypeWarning, "VMResizeFailed",
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeWarning, "VMResizeFailed", "VMResizeFailed",
 				"Failed to resize Pod via resize subresource: %s", err)
 			return fmt.Errorf("resize Pod for VM resize: %w", err)
 		}
 
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMResizePodInitiated",
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMResizePodInitiated", "VMResizePodInitiated",
 			"Pod resize initiated via resize subresource: CPU=%s, Memory=%s", desiredCPU.String(), desiredMem.String())
 		return nil
 	}
@@ -742,7 +743,7 @@ func (r *VirtualMachineReconciler) reconcileVMPodResize(ctx context.Context, vm 
 		vm.Status.Phase = v1beta1.VirtualMachineResizeInProgress
 		ctrl.Log.Info("VM resize: Pod resize completed, transitioning to Running",
 			"vm", vm.Name)
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "VMResizeInProgress",
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "VMResizeInProgress", "VMResizeInProgress",
 			"Pod resize completed, VM resize will be handled by daemon")
 	}
 
@@ -1004,7 +1005,7 @@ func (r *VirtualMachineReconciler) handleHotplugVolumes(ctx context.Context, vm 
 		if err := r.Create(ctx, volumePod); err != nil {
 			return err
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "CreatedHotplugVolumePod", "Created VM Hotplug Volume Pod %q", volumePod.Name)
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "CreatedHotplugVolumePod", "CreatedHotplugVolumePod", "Created VM Hotplug Volume Pod %q", volumePod.Name)
 	}
 
 	for _, pod := range oldPods {
@@ -1012,7 +1013,7 @@ func (r *VirtualMachineReconciler) handleHotplugVolumes(ctx context.Context, vm 
 			if err := r.Client.Delete(ctx, pod); err != nil {
 				return err
 			}
-			r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedHotplugVolumePod", "Deleted VM Hotplug Volume Pod %q", pod.Name)
+			r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "DeletedHotplugVolumePod", "DeletedHotplugVolumePod", "Deleted VM Hotplug Volume Pod %q", pod.Name)
 		}
 	}
 	return nil
@@ -1627,7 +1628,7 @@ func (r *VirtualMachineReconciler) deleteAllVMPods(ctx context.Context, vm *v1be
 		if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 			return false, fmt.Errorf("delete VM Pod: %s", err)
 		}
-		r.Recorder.Eventf(vm, corev1.EventTypeNormal, "DeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
+		r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "DeletedVMPod", "DeletedVMPod", "Deleted VM Pod %q", vmPod.Name)
 	}
 
 	// Pods are still terminating; their guests may still be shutting down. Report done only
@@ -1655,7 +1656,7 @@ func (r *VirtualMachineReconciler) stopVM(ctx context.Context, vm *v1beta1.Virtu
 	if err := r.Delete(ctx, &vmPod); client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("delete VM Pod: %s", err)
 	}
-	r.Recorder.Eventf(vm, corev1.EventTypeNormal, "StoppingVM", "Stopping VM (%s): deleted VM Pod %q", reason, vmPod.Name)
+	r.Recorder.Eventf(vm, nil, corev1.EventTypeNormal, "StoppingVM", "StoppingVM", "Stopping VM (%s): deleted VM Pod %q", reason, vmPod.Name)
 	return nil
 }
 

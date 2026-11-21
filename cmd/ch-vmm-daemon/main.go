@@ -66,7 +66,7 @@ func main() {
 	if err = (&daemon.VMReconciler{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
-		Recorder:      mgr.GetEventRecorderFor("virt-daemon-vm"),
+		Recorder:      mgr.GetEventRecorder("virt-daemon-vm"),
 		NodeName:      os.Getenv("NODE_NAME"),
 		NodeIP:        os.Getenv("NODE_IP"),
 		RelayProvider: tcpproxy.NewRelayProvider(),
@@ -83,7 +83,7 @@ func main() {
 	if err = (&daemon.VMSnapShotReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("virt-daemon-vmsnapshot"),
+		Recorder: mgr.GetEventRecorder("virt-daemon-vmsnapshot"),
 		NodeName: os.Getenv("NODE_NAME"),
 		NodeIP:   os.Getenv("NODE_IP"),
 	}).SetupWithManager(mgr); err != nil {

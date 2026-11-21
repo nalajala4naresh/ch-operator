@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -23,7 +23,7 @@ import (
 type VMMReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachinemigrations,verbs=get;list;watch;update;patch
@@ -31,6 +31,7 @@ type VMMReconciler struct {
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=cloudhypervisor.quill.today,resources=virtualmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 
 func (r *VMMReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -48,7 +49,7 @@ func (r *VMMReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	status := vmm.Status.DeepCopy()
 	if err := r.reconcile(ctx, &vmm); err != nil {
-		r.Recorder.Eventf(&vmm, corev1.EventTypeWarning, "FailedReconcile", "Failed to reconcile VMM: %s", err)
+		r.Recorder.Eventf(&vmm, nil, corev1.EventTypeWarning, "FailedReconcile", "FailedReconcile", "Failed to reconcile VMM: %s", err)
 		return ctrl.Result{}, err
 	}
 
@@ -153,7 +154,7 @@ func (r *VMMReconciler) reconcile(ctx context.Context, vmm *v1beta1.VirtualMachi
 	}
 
 	vmm.Status.Phase = v1beta1.VirtualMachineMigrationPending
-	r.Recorder.Eventf(vmm, corev1.EventTypeNormal, "MigrationStarted",
+	r.Recorder.Eventf(vmm, nil, corev1.EventTypeNormal, "MigrationStarted", "MigrationStarted",
 		"Started migration of VM %q from node %q", vm.Name, vm.Status.NodeName)
 	return nil
 }
@@ -168,7 +169,7 @@ func (r *VMMReconciler) mirror(ctx context.Context, vmm *v1beta1.VirtualMachineM
 
 	switch m.Phase {
 	case v1beta1.VirtualMachineMigrationSucceeded:
-		r.Recorder.Eventf(vmm, corev1.EventTypeNormal, "MigrationSucceeded",
+		r.Recorder.Eventf(vmm, nil, corev1.EventTypeNormal, "MigrationSucceeded", "MigrationSucceeded",
 			"VM %q migrated to node %q", vm.Name, m.TargetNodeName)
 	case v1beta1.VirtualMachineMigrationFailed:
 		return r.handleFailedMigration(ctx, vmm, vm)
@@ -213,13 +214,13 @@ func (r *VMMReconciler) handleFailedMigration(ctx context.Context, vmm *v1beta1.
 				return err
 			}
 		}
-		r.Recorder.Eventf(vmm, corev1.EventTypeWarning, "MigrationFailed",
+		r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, "MigrationFailed", "MigrationFailed",
 			"Migration of VM %q failed before cutover; VM remains on node %q, target Pod %q reclaimed",
 			vm.Name, vm.Status.NodeName, targetPodName)
 	} else {
 		// Past the PONR: the source is gone and the target may hold the only
 		// live VM state. Leave the target Pod in place for manual recovery.
-		r.Recorder.Eventf(vmm, corev1.EventTypeWarning, "MigrationFailedNeedsRecovery",
+		r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, "MigrationFailedNeedsRecovery", "MigrationFailedNeedsRecovery",
 			"Migration of VM %q failed after cutover; source is gone, target Pod %q left in place for manual recovery on node %q",
 			vm.Name, targetPodName, vm.Status.Migration.TargetNodeName)
 	}
@@ -272,7 +273,7 @@ func isTerminalMigrationPhase(phase v1beta1.VirtualMachineMigrationPhase) bool {
 // update is persisted by the caller rather than triggering a requeue.
 func (r *VMMReconciler) fail(vmm *v1beta1.VirtualMachineMigration, reason, msg string) error {
 	vmm.Status.Phase = v1beta1.VirtualMachineMigrationFailed
-	r.Recorder.Eventf(vmm, corev1.EventTypeWarning, reason, "%s", msg)
+	r.Recorder.Eventf(vmm, nil, corev1.EventTypeWarning, reason, reason, "%s", msg)
 	return nil
 }
 
